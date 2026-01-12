@@ -1,0 +1,66 @@
+// Darkpoint Admin Design Tokens - Consistent with main site
+
+// Main colors - Tech/Modern palette
+$color-main-1: #e08821; // Orange accent
+$color-main-2: #39a228; // Green
+$color-main-3: #2953b1; // Blue
+$color-main-4: #7c34a8; // Purple
+$color-main-5: #c82e2e; // Red
+
+// Bootstrap-style semantic colors
+$color-primary: #0275d8;
+$color-success: #5cb85c;
+$color-info: #5bc0de;
+$color-warning: #f0ad4e;
+$color-danger: #d9534f;
+
+// Dark colors - primary backgrounds
+$color-dark-1: #0e0e0e;
+$color-dark-2: #161616;
+$color-dark-3: #1e1e1e;
+$color-dark-4: #262626;
+$color-dark-5: #2e2e2e;
+
+// Gray colors
+$color-gray-1: #fafafa;
+$color-gray-2: #f8f8f8;
+$color-gray-3: #f5f5f5;
+$color-gray-4: #f2f2f2;
+$color-gray-5: #888888;
+
+// Typography
+$font-headings: "Marcellus SC", serif;
+$font-body: "Roboto Condensed", sans-serif;
+$font-buttons: "Marcellus SC", serif;
+$font-nav: "Marcellus SC", serif;
+
+$html-font-size: 16px;
+$body-line-height: 1.7;
+
+// Transitions
+$transition-fast: 0.15s ease;
+$transition-normal: 0.3s ease;
+$transition-slow: 0.6s ease;
+
+// Border radius
+$border-radius-sm: 4px;
+$border-radius: 8px;
+$border-radius-lg: 12px;
+$border-radius-xl: 16px;
+
+// Shadows
+$shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+$shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4);
+$shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.5);
+$shadow-glow: 0 0 20px rgba(224, 136, 33, 0.3);
+
+// Sidebar
+$sidebar-width: 260px;
+$sidebar-collapsed-width: 72px;
+
+// Z-index layers
+$z-sidebar: 40;
+$z-header: 50;
+$z-modal: 100;
+$z-toast: 200;
+
