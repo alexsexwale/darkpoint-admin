@@ -15,6 +15,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const pathname = usePathname();
   const { isAuthenticated, isLoading, checkAuth } = useAuthStore();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     checkAuth();
@@ -25,6 +26,22 @@ export function AdminLayout({ children }: AdminLayoutProps) {
       router.push('/login');
     }
   }, [isAuthenticated, isLoading, pathname, router]);
+
+  // Close sidebar on route change (mobile)
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [pathname]);
+
+  // Close sidebar on resize to desktop
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 1024) {
+        setSidebarOpen(false);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Show loading state
   if (isLoading) {
@@ -50,17 +67,22 @@ export function AdminLayout({ children }: AdminLayoutProps) {
 
   return (
     <div className="min-h-screen bg-dark-1">
-      <Sidebar />
+      <Sidebar 
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+      />
       <div 
-        className="transition-all duration-300"
-        style={{ marginLeft: sidebarCollapsed ? '72px' : '260px' }}
+        className={`transition-all duration-300 ${
+          sidebarCollapsed ? 'lg:ml-[72px]' : 'lg:ml-[260px]'
+        }`}
       >
-        <Header />
-        <main className="p-6">
+        <Header onMenuClick={() => setSidebarOpen(true)} />
+        <main className="p-4 md:p-6">
           {children}
         </main>
       </div>
     </div>
   );
 }
-

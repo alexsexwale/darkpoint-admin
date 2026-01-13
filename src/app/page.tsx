@@ -42,28 +42,28 @@ function StatCard({ title, value, icon: Icon, trend, subtitle, color }: StatCard
 
   return (
     <Card className={`bg-gradient-to-br ${colorClasses[color]} border hover:shadow-lg transition-all`}>
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-sm text-gray-5 mb-1">{title}</p>
-          <p className="text-2xl font-heading text-gray-1 tracking-wide">{value}</p>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-xs md:text-sm text-gray-5 mb-1">{title}</p>
+          <p className="text-xl md:text-2xl font-heading text-gray-1 tracking-wide truncate">{value}</p>
           {trend && (
             <div className="flex items-center gap-1 mt-2">
               {trend.isPositive ? (
-                <HiOutlineTrendingUp className="w-4 h-4 text-green-400" />
+                <HiOutlineTrendingUp className="w-4 h-4 text-green-400 flex-shrink-0" />
               ) : (
-                <HiOutlineTrendingDown className="w-4 h-4 text-red-400" />
+                <HiOutlineTrendingDown className="w-4 h-4 text-red-400 flex-shrink-0" />
               )}
-              <span className={`text-xs ${trend.isPositive ? 'text-green-400' : 'text-red-400'}`}>
+              <span className={`text-xs ${trend.isPositive ? 'text-green-400' : 'text-red-400'} truncate`}>
                 {trend.value}% from last period
               </span>
             </div>
           )}
           {subtitle && (
-            <p className="text-xs text-gray-5 mt-2">{subtitle}</p>
+            <p className="text-xs text-gray-5 mt-2 truncate">{subtitle}</p>
           )}
         </div>
-        <div className={`p-3 rounded-lg bg-dark-2/50 ${iconColors[color]}`}>
-          <Icon className="w-6 h-6" />
+        <div className={`p-2 md:p-3 rounded-lg bg-dark-2/50 ${iconColors[color]} flex-shrink-0`}>
+          <Icon className="w-5 h-5 md:w-6 md:h-6" />
         </div>
       </div>
     </Card>
@@ -193,16 +193,16 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="font-heading text-2xl text-gray-1 tracking-wider">Dashboard</h1>
-          <p className="text-gray-5 text-sm mt-1">
+          <h1 className="font-heading text-xl md:text-2xl text-gray-1 tracking-wider">Dashboard</h1>
+          <p className="text-gray-5 text-xs md:text-sm mt-1">
             Welcome back! Here&apos;s what&apos;s happening with your store.
           </p>
         </div>
         <Link
           href="/orders"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-main-1 text-white rounded-lg hover:bg-main-1/90 transition-colors"
+          className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-main-1 text-white rounded-lg hover:bg-main-1/90 transition-colors text-sm w-full sm:w-auto"
         >
           View Orders
           <HiOutlineArrowRight className="w-4 h-4" />
@@ -241,38 +241,32 @@ export default function DashboardPage() {
       </div>
 
       {/* Today's Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-3 gap-3 md:gap-6">
         <Card>
           <CardHeader>
-            <CardTitle>Today</CardTitle>
+            <CardTitle className="text-sm md:text-base">Today</CardTitle>
           </CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-3xl font-heading text-main-1">{formatCurrency(stats?.todayRevenue || 0)}</p>
-              <p className="text-sm text-gray-5 mt-1">{stats?.todayOrders || 0} orders</p>
-            </div>
+          <div>
+            <p className="text-lg md:text-3xl font-heading text-main-1 truncate">{formatCurrency(stats?.todayRevenue || 0)}</p>
+            <p className="text-xs md:text-sm text-gray-5 mt-1">{stats?.todayOrders || 0} orders</p>
           </div>
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>This Week</CardTitle>
+            <CardTitle className="text-sm md:text-base">This Week</CardTitle>
           </CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-3xl font-heading text-green-400">{formatCurrency(stats?.weekRevenue || 0)}</p>
-              <p className="text-sm text-gray-5 mt-1">{stats?.weekOrders || 0} orders</p>
-            </div>
+          <div>
+            <p className="text-lg md:text-3xl font-heading text-green-400 truncate">{formatCurrency(stats?.weekRevenue || 0)}</p>
+            <p className="text-xs md:text-sm text-gray-5 mt-1">{stats?.weekOrders || 0} orders</p>
           </div>
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>This Month</CardTitle>
+            <CardTitle className="text-sm md:text-base">This Month</CardTitle>
           </CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-3xl font-heading text-blue-400">{formatCurrency(stats?.monthRevenue || 0)}</p>
-              <p className="text-sm text-gray-5 mt-1">{stats?.monthOrders || 0} orders</p>
-            </div>
+          <div>
+            <p className="text-lg md:text-3xl font-heading text-blue-400 truncate">{formatCurrency(stats?.monthRevenue || 0)}</p>
+            <p className="text-xs md:text-sm text-gray-5 mt-1">{stats?.monthOrders || 0} orders</p>
           </div>
         </Card>
       </div>
@@ -336,7 +330,7 @@ export default function DashboardPage() {
       </Card>
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
         <Link href="/orders?status=pending" className="group">
           <Card hover className="h-full">
             <div className="flex items-center gap-3">

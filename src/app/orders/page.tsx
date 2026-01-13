@@ -158,59 +158,63 @@ export default function OrdersPage() {
   const totalPages = Math.ceil(totalCount / pageSize);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="font-heading text-2xl text-gray-1 tracking-wider">Orders</h1>
-          <p className="text-gray-5 text-sm mt-1">
+          <h1 className="font-heading text-xl md:text-2xl text-gray-1 tracking-wider">Orders</h1>
+          <p className="text-gray-5 text-xs md:text-sm mt-1">
             Manage and track all customer orders
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <Button variant="secondary" onClick={fetchOrders} leftIcon={<HiOutlineRefresh className="w-4 h-4" />}>
-            Refresh
+        <div className="flex items-center gap-2">
+          <Button variant="secondary" onClick={fetchOrders} leftIcon={<HiOutlineRefresh className="w-4 h-4" />} size="sm">
+            <span className="hidden sm:inline">Refresh</span>
           </Button>
-          <Button variant="secondary" onClick={exportOrders} leftIcon={<HiOutlineDownload className="w-4 h-4" />}>
-            Export CSV
+          <Button variant="secondary" onClick={exportOrders} leftIcon={<HiOutlineDownload className="w-4 h-4" />} size="sm">
+            <span className="hidden sm:inline">Export</span>
           </Button>
         </div>
       </div>
 
       {/* Filters */}
-      <Card padding="md">
-        <form onSubmit={handleSearch} className="flex flex-wrap items-end gap-4">
-          <div className="flex-1 min-w-[200px]">
+      <Card padding="sm" className="md:p-4">
+        <form onSubmit={handleSearch} className="space-y-3">
+          {/* Search input */}
+          <div className="w-full">
             <Input
-              placeholder="Search by order #, customer name, or email..."
+              placeholder="Search by order #, customer, or email..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               leftIcon={<HiOutlineSearch className="w-4 h-4" />}
             />
           </div>
-          <div className="w-48">
-            <Select
-              options={ORDER_STATUSES}
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value);
-                setPage(1);
-              }}
-            />
+          {/* Filters row */}
+          <div className="flex flex-wrap gap-2">
+            <div className="flex-1 min-w-[120px]">
+              <Select
+                options={ORDER_STATUSES}
+                value={statusFilter}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value);
+                  setPage(1);
+                }}
+              />
+            </div>
+            <div className="flex-1 min-w-[120px]">
+              <Select
+                options={PAYMENT_STATUSES}
+                value={paymentFilter}
+                onChange={(e) => {
+                  setPaymentFilter(e.target.value);
+                  setPage(1);
+                }}
+              />
+            </div>
+            <Button type="submit" leftIcon={<HiOutlineFilter className="w-4 h-4" />} className="flex-shrink-0">
+              <span className="hidden sm:inline">Filter</span>
+            </Button>
           </div>
-          <div className="w-48">
-            <Select
-              options={PAYMENT_STATUSES}
-              value={paymentFilter}
-              onChange={(e) => {
-                setPaymentFilter(e.target.value);
-                setPage(1);
-              }}
-            />
-          </div>
-          <Button type="submit" leftIcon={<HiOutlineFilter className="w-4 h-4" />}>
-            Filter
-          </Button>
         </form>
       </Card>
 

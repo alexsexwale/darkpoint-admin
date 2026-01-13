@@ -69,29 +69,36 @@ export function Modal({
     <div
       ref={overlayRef}
       onClick={handleOverlayClick}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-end md:items-center justify-center md:p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200"
     >
       <div
         className={clsx(
-          'w-full bg-dark-2 border border-dark-4 rounded-lg shadow-xl animate-in zoom-in-95 duration-200',
+          'w-full bg-dark-2 border border-dark-4 shadow-xl animate-in duration-200',
+          // Mobile: slide up from bottom, full width, rounded top corners
+          'rounded-t-2xl md:rounded-lg',
+          'slide-in-from-bottom-4 md:zoom-in-95',
+          // Max height on mobile to allow scrolling
+          'max-h-[90vh] md:max-h-[85vh] overflow-hidden flex flex-col',
           sizeClasses[size]
         )}
       >
         {/* Header */}
         {(title || showClose) && (
-          <div className="flex items-start justify-between p-6 border-b border-dark-4">
-            <div>
+          <div className="flex items-start justify-between p-4 md:p-6 border-b border-dark-4 flex-shrink-0">
+            {/* Mobile drag indicator */}
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 w-10 h-1 bg-gray-5/30 rounded-full md:hidden" />
+            <div className="mt-2 md:mt-0">
               {title && (
-                <h2 className="font-heading text-xl text-gray-1 tracking-wider">{title}</h2>
+                <h2 className="font-heading text-lg md:text-xl text-gray-1 tracking-wider">{title}</h2>
               )}
               {description && (
-                <p className="text-sm text-gray-5 mt-1">{description}</p>
+                <p className="text-xs md:text-sm text-gray-5 mt-1">{description}</p>
               )}
             </div>
             {showClose && (
               <button
                 onClick={onClose}
-                className="p-1 rounded-md text-gray-5 hover:text-gray-1 hover:bg-dark-3 transition-colors"
+                className="p-2 -mr-2 rounded-md text-gray-5 hover:text-gray-1 hover:bg-dark-3 transition-colors"
               >
                 <HiOutlineX className="w-5 h-5" />
               </button>
@@ -99,8 +106,8 @@ export function Modal({
           </div>
         )}
 
-        {/* Content */}
-        <div className="p-6">
+        {/* Content - scrollable */}
+        <div className="p-4 md:p-6 overflow-y-auto flex-1">
           {children}
         </div>
       </div>

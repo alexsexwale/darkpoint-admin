@@ -127,78 +127,78 @@ export default function MembersPage() {
   const totalPages = Math.ceil(totalCount / pageSize);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="font-heading text-2xl text-gray-1 tracking-wider">Members</h1>
-          <p className="text-gray-5 text-sm mt-1">
+          <h1 className="font-heading text-xl md:text-2xl text-gray-1 tracking-wider">Members</h1>
+          <p className="text-gray-5 text-xs md:text-sm mt-1">
             View and manage all registered members
           </p>
         </div>
-        <Button variant="secondary" onClick={fetchMembers} leftIcon={<HiOutlineRefresh className="w-4 h-4" />}>
+        <Button variant="secondary" onClick={fetchMembers} leftIcon={<HiOutlineRefresh className="w-4 h-4" />} size="sm">
           Refresh
         </Button>
       </div>
 
       {/* Stats Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
         <Card padding="sm">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-500/20 rounded-lg">
-              <HiOutlineStar className="w-5 h-5 text-blue-400" />
+          <div className="flex items-center gap-2 md:gap-3">
+            <div className="p-1.5 md:p-2 bg-blue-500/20 rounded-lg flex-shrink-0">
+              <HiOutlineStar className="w-4 h-4 md:w-5 md:h-5 text-blue-400" />
             </div>
-            <div>
-              <p className="text-2xl font-heading text-gray-1">{totalCount}</p>
-              <p className="text-xs text-gray-5">Total Members</p>
+            <div className="min-w-0">
+              <p className="text-lg md:text-2xl font-heading text-gray-1">{totalCount}</p>
+              <p className="text-[10px] md:text-xs text-gray-5">Total Members</p>
             </div>
           </div>
         </Card>
         <Card padding="sm">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-main-1/20 rounded-lg">
-              <HiOutlineTrendingUp className="w-5 h-5 text-main-1" />
+          <div className="flex items-center gap-2 md:gap-3">
+            <div className="p-1.5 md:p-2 bg-main-1/20 rounded-lg flex-shrink-0">
+              <HiOutlineTrendingUp className="w-4 h-4 md:w-5 md:h-5 text-main-1" />
             </div>
-            <div>
-              <p className="text-2xl font-heading text-gray-1">
+            <div className="min-w-0">
+              <p className="text-lg md:text-2xl font-heading text-gray-1">
                 {members.filter(m => m.current_level >= 10).length}
               </p>
-              <p className="text-xs text-gray-5">Level 10+</p>
+              <p className="text-[10px] md:text-xs text-gray-5">Level 10+</p>
             </div>
           </div>
         </Card>
         <Card padding="sm">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-purple-500/20 rounded-lg">
-              <HiOutlineShoppingCart className="w-5 h-5 text-purple-400" />
+          <div className="flex items-center gap-2 md:gap-3">
+            <div className="p-1.5 md:p-2 bg-purple-500/20 rounded-lg flex-shrink-0">
+              <HiOutlineShoppingCart className="w-4 h-4 md:w-5 md:h-5 text-purple-400" />
             </div>
-            <div>
-              <p className="text-2xl font-heading text-gray-1">
+            <div className="min-w-0">
+              <p className="text-lg md:text-2xl font-heading text-gray-1">
                 {members.filter(m => m.total_orders > 0).length}
               </p>
-              <p className="text-xs text-gray-5">Customers</p>
+              <p className="text-[10px] md:text-xs text-gray-5">Customers</p>
             </div>
           </div>
         </Card>
         <Card padding="sm">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-green-500/20 rounded-lg">
-              <HiOutlineStar className="w-5 h-5 text-green-400" />
+          <div className="flex items-center gap-2 md:gap-3">
+            <div className="p-1.5 md:p-2 bg-green-500/20 rounded-lg flex-shrink-0">
+              <HiOutlineStar className="w-4 h-4 md:w-5 md:h-5 text-green-400" />
             </div>
-            <div>
-              <p className="text-2xl font-heading text-gray-1">
+            <div className="min-w-0">
+              <p className="text-lg md:text-2xl font-heading text-gray-1">
                 {members.filter(m => m.current_streak >= 7).length}
               </p>
-              <p className="text-xs text-gray-5">Active Streakers</p>
+              <p className="text-[10px] md:text-xs text-gray-5">Active Streakers</p>
             </div>
           </div>
         </Card>
       </div>
 
       {/* Filters */}
-      <Card padding="md">
-        <form onSubmit={handleSearch} className="flex flex-wrap items-end gap-4">
-          <div className="flex-1 min-w-[200px]">
+      <Card padding="sm" className="md:p-4">
+        <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-3">
+          <div className="flex-1">
             <Input
               placeholder="Search by email, username, or display name..."
               value={searchQuery}
@@ -206,17 +206,19 @@ export default function MembersPage() {
               leftIcon={<HiOutlineSearch className="w-4 h-4" />}
             />
           </div>
-          <div className="w-48">
-            <Select
-              options={SORT_OPTIONS}
-              value={sortBy}
-              onChange={(e) => {
-                setSortBy(e.target.value);
-                setPage(1);
-              }}
-            />
+          <div className="flex gap-2">
+            <div className="flex-1 sm:w-40">
+              <Select
+                options={SORT_OPTIONS}
+                value={sortBy}
+                onChange={(e) => {
+                  setSortBy(e.target.value);
+                  setPage(1);
+                }}
+              />
+            </div>
+            <Button type="submit" className="flex-shrink-0">Search</Button>
           </div>
-          <Button type="submit">Search</Button>
         </form>
       </Card>
 
