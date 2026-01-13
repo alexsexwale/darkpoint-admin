@@ -10,6 +10,7 @@ import {
   HiOutlineArrowRight,
   HiOutlineTrendingUp,
   HiOutlineTrendingDown,
+  HiOutlineUserCircle,
 } from 'react-icons/hi';
 import { Card, CardHeader, CardTitle, Badge, OrderStatusBadge } from '@/components/ui';
 import { supabase } from '@/lib/supabase';
@@ -90,10 +91,17 @@ export default function DashboardPage() {
         // Fallback to manual calculation if function doesn't exist
         await fetchStatsFallback();
       } else if (statsData && statsData[0]) {
+        // Also fetch unique customer count
+        const { count: customerCount } = await supabase
+          .from('orders')
+          .select('billing_email', { count: 'exact', head: true })
+          .not('billing_email', 'is', null);
+        
         setStats({
           totalRevenue: Number(statsData[0].total_revenue) || 0,
           totalOrders: Number(statsData[0].total_orders) || 0,
           totalMembers: Number(statsData[0].total_members) || 0,
+          totalCustomers: customerCount || 0,
           pendingOrders: Number(statsData[0].pending_orders) || 0,
           todayRevenue: Number(statsData[0].today_revenue) || 0,
           todayOrders: Number(statsData[0].today_orders) || 0,
@@ -142,11 +150,16 @@ export default function DashboardPage() {
 
     const paidOrders = orders.filter(o => o.payment_status === 'paid');
     const pendingOrders = orders.filter(o => o.status === 'pending');
+    
+    // Count unique customers by billing email
+    const uniqueEmails = new Set(orders.map(o => o.billing_email).filter(Boolean));
+    const totalCustomers = uniqueEmails.size;
 
     setStats({
       totalRevenue: paidOrders.reduce((sum, o) => sum + (o.total || 0), 0),
       totalOrders: orders.length,
       totalMembers,
+      totalCustomers,
       pendingOrders: pendingOrders.length,
       todayRevenue: paidOrders
         .filter(o => new Date(o.created_at) >= today)
@@ -181,8 +194,8 @@ export default function DashboardPage() {
             <div className="h-4 w-32 bg-dark-3 rounded animate-pulse mt-2" />
           </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {[1, 2, 3, 4].map((i) => (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 md:gap-6">
+          {[1, 2, 3, 4, 5].map((i) => (
             <div key={i} className="h-32 bg-dark-2 border border-dark-4 rounded-lg animate-pulse" />
           ))}
         </div>
@@ -210,7 +223,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 md:gap-6">
         <StatCard
           title="Total Revenue"
           value={formatCurrency(stats?.totalRevenue || 0)}
@@ -226,17 +239,25 @@ export default function DashboardPage() {
           color="green"
         />
         <StatCard
-          title="Total Members"
-          value={stats?.totalMembers || 0}
-          icon={HiOutlineUsers}
+          title="Customers"
+          value={stats?.totalCustomers || 0}
+          icon={HiOutlineUserCircle}
+          subtitle="Unique buyers"
           color="blue"
         />
         <StatCard
-          title="Pending Orders"
+          title="Members"
+          value={stats?.totalMembers || 0}
+          icon={HiOutlineUsers}
+          subtitle="Registered accounts"
+          color="purple"
+        />
+        <StatCard
+          title="Pending"
           value={stats?.pendingOrders || 0}
           icon={HiOutlineClock}
           subtitle="Requires attention"
-          color="purple"
+          color="orange"
         />
       </div>
 
@@ -330,7 +351,7 @@ export default function DashboardPage() {
       </Card>
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 md:gap-4">
         <Link href="/orders?status=pending" className="group">
           <Card hover className="h-full">
             <div className="flex items-center gap-3">
@@ -338,8 +359,22 @@ export default function DashboardPage() {
                 <HiOutlineClock className="w-5 h-5 text-amber-400" />
               </div>
               <div>
-                <p className="font-medium text-gray-1">Process Orders</p>
+                <p className="font-medium text-gray-1 text-sm">Process Orders</p>
                 <p className="text-xs text-gray-5">{stats?.pendingOrders || 0} pending</p>
+              </div>
+            </div>
+          </Card>
+        </Link>
+        
+        <Link href="/customers" className="group">
+          <Card hover className="h-full">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-cyan-500/20 rounded-lg group-hover:bg-cyan-500/30 transition-colors">
+                <HiOutlineUserCircle className="w-5 h-5 text-cyan-400" />
+              </div>
+              <div>
+                <p className="font-medium text-gray-1 text-sm">Customers</p>
+                <p className="text-xs text-gray-5">{stats?.totalCustomers || 0} buyers</p>
               </div>
             </div>
           </Card>
@@ -352,8 +387,8 @@ export default function DashboardPage() {
                 <HiOutlineShoppingCart className="w-5 h-5 text-blue-400" />
               </div>
               <div>
-                <p className="font-medium text-gray-1">Manage Products</p>
-                <p className="text-xs text-gray-5">Add or edit products</p>
+                <p className="font-medium text-gray-1 text-sm">Products</p>
+                <p className="text-xs text-gray-5">Add or edit</p>
               </div>
             </div>
           </Card>
@@ -366,8 +401,8 @@ export default function DashboardPage() {
                 <HiOutlineUsers className="w-5 h-5 text-green-400" />
               </div>
               <div>
-                <p className="font-medium text-gray-1">View Members</p>
-                <p className="text-xs text-gray-5">{stats?.totalMembers || 0} members</p>
+                <p className="font-medium text-gray-1 text-sm">Members</p>
+                <p className="text-xs text-gray-5">{stats?.totalMembers || 0} registered</p>
               </div>
             </div>
           </Card>
@@ -380,7 +415,7 @@ export default function DashboardPage() {
                 <HiOutlineTrendingUp className="w-5 h-5 text-purple-400" />
               </div>
               <div>
-                <p className="font-medium text-gray-1">Analytics</p>
+                <p className="font-medium text-gray-1 text-sm">Analytics</p>
                 <p className="text-xs text-gray-5">View reports</p>
               </div>
             </div>

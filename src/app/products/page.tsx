@@ -11,6 +11,10 @@ import {
   HiOutlineTrash,
   HiOutlineCloudDownload,
   HiOutlineExternalLink,
+  HiOutlineCurrencyDollar,
+  HiOutlineAdjustments,
+  HiOutlineTrendingUp,
+  HiOutlineInformationCircle,
 } from 'react-icons/hi';
 import { 
   Card, 
@@ -44,6 +48,14 @@ const STATUS_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'featured', label: 'Featured' },
 ];
 
+const MARKUP_PRESETS = [
+  { label: '100%', value: 100, description: '2x cost' },
+  { label: '150%', value: 150, description: '2.5x cost' },
+  { label: '200%', value: 200, description: '3x cost' },
+  { label: '250%', value: 250, description: '3.5x cost' },
+  { label: '300%', value: 300, description: '4x cost' },
+];
+
 export default function ProductsPage() {
   const [products, setProducts] = useState<AdminProduct[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -64,6 +76,38 @@ export default function ProductsPage() {
   const [cjSearchQuery, setCJSearchQuery] = useState('');
   const [cjProducts, setCJProducts] = useState<any[]>([]);
   const [isSearchingCJ, setIsSearchingCJ] = useState(false);
+  const [importingProductId, setImportingProductId] = useState<string | null>(null);
+  
+  // Exchange rate states
+  const [exchangeRate, setExchangeRate] = useState<number>(18.5);
+  const [isLoadingRate, setIsLoadingRate] = useState(false);
+  const [rateInfo, setRateInfo] = useState<{ cached: boolean; fetchedAt?: string } | null>(null);
+  const [defaultMarkup, setDefaultMarkup] = useState<number>(150);
+
+  // Fetch exchange rate
+  const fetchExchangeRate = useCallback(async () => {
+    setIsLoadingRate(true);
+    try {
+      const response = await fetch('/api/exchange-rate');
+      const result = await response.json();
+      
+      if (result.success && result.data) {
+        setExchangeRate(result.data.rate);
+        setRateInfo({
+          cached: result.data.cached,
+          fetchedAt: result.data.fetchedAt || result.data.cachedAt,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to fetch exchange rate:', err);
+    } finally {
+      setIsLoadingRate(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchExchangeRate();
+  }, [fetchExchangeRate]);
 
   const fetchProducts = useCallback(async () => {
     setIsLoading(true);
@@ -127,29 +171,40 @@ export default function ProductsPage() {
     }
   };
 
-  const importCJProduct = async (cjProduct: any) => {
-    setIsSaving(true);
+  const importCJProduct = async (cjProduct: any, customMarkup?: number) => {
+    setImportingProductId(cjProduct.id);
     try {
+      const markup = customMarkup || defaultMarkup;
+      const costZAR = cjProduct.basePrice * exchangeRate;
+      const sellZAR = costZAR * (1 + markup / 100);
+      
       const response = await fetch('/api/products/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cjProduct }),
+        body: JSON.stringify({ 
+          cjProduct,
+          exchangeRate,
+          markupPercent: markup,
+          costZAR,
+          sellZAR,
+        }),
       });
       
       const result = await response.json();
       
       if (result.success) {
+        // Remove the imported product from the list
+        setCJProducts(prev => prev.filter(p => p.id !== cjProduct.id));
         await fetchProducts();
-        setShowAddModal(false);
-        setCJProducts([]);
-        setCJSearchQuery('');
+        // Don't close modal - allow importing more products
       } else {
         alert(`Failed to import: ${result.error}`);
       }
     } catch (err) {
       console.error('Import error:', err);
+      alert('Failed to import product. Please try again.');
     } finally {
-      setIsSaving(false);
+      setImportingProductId(null);
     }
   };
 
@@ -193,7 +248,15 @@ export default function ProductsPage() {
     }
   };
 
-  const formatCurrency = (amount: number) => {
+  const formatUSD = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+    }).format(amount);
+  };
+
+  const formatZAR = (amount: number) => {
     return new Intl.NumberFormat('en-ZA', {
       style: 'currency',
       currency: 'ZAR',
@@ -202,6 +265,16 @@ export default function ProductsPage() {
   };
 
   const totalPages = Math.ceil(totalCount / pageSize);
+
+  // Calculate pricing for a product
+  const calculatePricing = (usdCost: number, markup: number = defaultMarkup) => {
+    const costZAR = usdCost * exchangeRate;
+    const sellZAR = costZAR * (1 + markup / 100);
+    const profitZAR = sellZAR - costZAR;
+    const profitMargin = (profitZAR / sellZAR) * 100;
+    
+    return { costZAR, sellZAR, profitZAR, profitMargin };
+  };
 
   return (
     <div className="space-y-6">
@@ -373,10 +446,10 @@ export default function ProductsPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-lg font-heading text-main-1">
-                      {formatCurrency(product.sell_price)}
+                      {formatZAR(product.sell_price)}
                     </p>
                     <p className="text-xs text-gray-5">
-                      Cost: {formatCurrency(product.base_price)}
+                      Cost: {formatZAR(product.base_price)}
                     </p>
                   </div>
                   <Badge variant={product.markup_percent >= 150 ? 'success' : 'warning'}>
@@ -423,9 +496,70 @@ export default function ProductsPage() {
           setCJSearchQuery('');
         }}
         title="Add Product from CJ Dropshipping"
-        size="3xl"
+        size="full"
       >
         <div className="space-y-6">
+          {/* Exchange Rate & Markup Controls */}
+          <div className="bg-gradient-to-r from-blue-500/10 to-cyan-500/10 border border-blue-500/20 rounded-xl p-4">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              {/* Exchange Rate */}
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <HiOutlineCurrencyDollar className="w-5 h-5 text-blue-400" />
+                  <span className="text-sm text-gray-1">Exchange Rate:</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-lg font-bold text-blue-400">1 USD = R {exchangeRate.toFixed(2)}</span>
+                  <button
+                    onClick={fetchExchangeRate}
+                    disabled={isLoadingRate}
+                    className="p-1.5 rounded-lg bg-dark-3 hover:bg-dark-4 transition-colors"
+                    title="Refresh exchange rate"
+                  >
+                    <HiOutlineRefresh className={`w-4 h-4 text-gray-5 ${isLoadingRate ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
+                {rateInfo?.cached && (
+                  <span className="text-xs text-gray-5">(cached)</span>
+                )}
+              </div>
+
+              {/* Default Markup */}
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <HiOutlineAdjustments className="w-5 h-5 text-green-400" />
+                  <span className="text-sm text-gray-1">Default Markup:</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  {MARKUP_PRESETS.map((preset) => (
+                    <button
+                      key={preset.value}
+                      onClick={() => setDefaultMarkup(preset.value)}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                        defaultMarkup === preset.value
+                          ? 'bg-green-500 text-white'
+                          : 'bg-dark-3 text-gray-5 hover:bg-dark-4 hover:text-gray-1'
+                      }`}
+                      title={preset.description}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Info tooltip */}
+            <div className="flex items-start gap-2 mt-3 text-xs text-gray-5">
+              <HiOutlineInformationCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <p>
+                CJ prices are in <span className="text-blue-400 font-medium">USD</span>. 
+                They will be converted to <span className="text-green-400 font-medium">ZAR</span> using the current exchange rate, 
+                then your markup will be applied to calculate the selling price.
+              </p>
+            </div>
+          </div>
+
           {/* Search CJ */}
           <div className="flex gap-3">
             <Input
@@ -443,84 +577,135 @@ export default function ProductsPage() {
 
           {/* CJ Products Results */}
           {cjProducts.length > 0 && (
-            <div className="max-h-[60vh] overflow-y-auto pr-2">
+            <div className="max-h-[55vh] overflow-y-auto pr-2">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {cjProducts.map((product) => (
-                  <div 
-                    key={product.id}
-                    className="p-4 bg-dark-3 rounded-lg border border-dark-4 hover:border-main-1/30 transition-colors"
-                  >
-                    <div className="flex gap-4">
-                      {/* Product Image */}
-                      <div className="w-24 h-24 bg-dark-4 rounded-lg overflow-hidden flex-shrink-0">
-                        {product.images?.[0] ? (
-                          <img 
-                            src={product.images[0].src}
-                            alt={product.name}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-gray-5 text-xs">
-                            No image
-                          </div>
-                        )}
+                {cjProducts.map((product) => {
+                  const pricing = calculatePricing(product.basePrice);
+                  
+                  return (
+                    <div 
+                      key={product.id}
+                      className="p-4 bg-dark-3 rounded-xl border border-dark-4 hover:border-main-1/30 transition-all"
+                    >
+                      <div className="flex gap-4">
+                        {/* Product Image */}
+                        <div className="w-24 h-24 bg-dark-4 rounded-lg overflow-hidden flex-shrink-0">
+                          {product.images?.[0] ? (
+                            <img 
+                              src={product.images[0].src}
+                              alt={product.name}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-gray-5 text-xs">
+                              No image
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* Product Info */}
+                        <div className="flex-1 min-w-0">
+                          <h4 className="text-sm font-medium text-gray-1 line-clamp-2 mb-2">
+                            {product.name}
+                          </h4>
+                          
+                          {/* Description */}
+                          {product.shortDescription && (
+                            <p className="text-xs text-gray-5 line-clamp-2 mb-3">
+                              {product.shortDescription}
+                            </p>
+                          )}
+                        </div>
                       </div>
                       
-                      {/* Product Info */}
-                      <div className="flex-1 min-w-0">
-                        <h4 className="text-sm font-medium text-gray-1 line-clamp-2 mb-2">
-                          {product.name}
-                        </h4>
-                        
-                        {/* Description */}
-                        {product.shortDescription && (
-                          <p className="text-xs text-gray-5 line-clamp-2 mb-2">
-                            {product.shortDescription}
-                          </p>
-                        )}
-                        
-                        {/* Pricing */}
-                        <div className="flex items-center gap-4 text-xs">
-                          <div>
-                            <span className="text-gray-5">Cost: </span>
-                            <span className="text-red-400 font-medium">{formatCurrency(product.basePrice)}</span>
+                      {/* Pricing Breakdown */}
+                      <div className="mt-4 p-3 bg-dark-4/50 rounded-lg">
+                        <div className="grid grid-cols-2 gap-3 text-sm">
+                          {/* CJ Cost in USD */}
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-5">CJ Cost (USD):</span>
+                            <span className="font-mono text-blue-400 font-medium">
+                              {formatUSD(product.basePrice)}
+                            </span>
                           </div>
-                          <div>
-                            <span className="text-gray-5">Sell: </span>
-                            <span className="text-green-400 font-medium">{formatCurrency(product.price)}</span>
+                          
+                          {/* Cost in ZAR */}
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-5">Cost (ZAR):</span>
+                            <span className="font-mono text-red-400 font-medium">
+                              {formatZAR(pricing.costZAR)}
+                            </span>
                           </div>
-                          <div>
-                            <span className="text-gray-5">Profit: </span>
-                            <span className="text-main-1 font-medium">
-                              {formatCurrency(product.price - product.basePrice)}
+                          
+                          {/* Selling Price */}
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-5">Sell Price:</span>
+                            <span className="font-mono text-green-400 font-medium">
+                              {formatZAR(pricing.sellZAR)}
+                            </span>
+                          </div>
+                          
+                          {/* Profit */}
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-5">Profit:</span>
+                            <span className="font-mono text-main-1 font-medium">
+                              {formatZAR(pricing.profitZAR)}
                             </span>
                           </div>
                         </div>
+                        
+                        {/* Profit Margin Bar */}
+                        <div className="mt-3 pt-3 border-t border-dark-4">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs text-gray-5 flex items-center gap-1">
+                              <HiOutlineTrendingUp className="w-3 h-3" />
+                              Profit Margin
+                            </span>
+                            <span className={`text-sm font-bold ${
+                              pricing.profitMargin >= 60 ? 'text-green-400' :
+                              pricing.profitMargin >= 40 ? 'text-yellow-400' :
+                              'text-red-400'
+                            }`}>
+                              {pricing.profitMargin.toFixed(1)}%
+                            </span>
+                          </div>
+                          <div className="h-2 bg-dark-4 rounded-full overflow-hidden">
+                            <div 
+                              className={`h-full rounded-full transition-all ${
+                                pricing.profitMargin >= 60 ? 'bg-gradient-to-r from-green-500 to-emerald-400' :
+                                pricing.profitMargin >= 40 ? 'bg-gradient-to-r from-yellow-500 to-amber-400' :
+                                'bg-gradient-to-r from-red-500 to-orange-400'
+                              }`}
+                              style={{ width: `${Math.min(pricing.profitMargin, 100)}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Actions */}
+                      <div className="flex items-center justify-between mt-4 pt-3 border-t border-dark-4">
+                        <a
+                          href={`https://www.cjdropshipping.com/product/${product.slug || product.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-p-${product.id}.html`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 text-xs text-main-1 hover:text-main-1/80 transition-colors"
+                        >
+                          <HiOutlineExternalLink className="w-4 h-4" />
+                          View on CJ
+                        </a>
+                        <Button 
+                          size="sm" 
+                          onClick={() => importCJProduct(product)}
+                          disabled={importingProductId !== null}
+                          isLoading={importingProductId === product.id}
+                          leftIcon={importingProductId !== product.id ? <HiOutlineCloudDownload className="w-4 h-4" /> : undefined}
+                        >
+                          {importingProductId === product.id ? 'Importing...' : `Import @ ${defaultMarkup}%`}
+                        </Button>
                       </div>
                     </div>
-                    
-                    {/* Actions */}
-                    <div className="flex items-center justify-between mt-4 pt-3 border-t border-dark-4">
-                      <a
-                        href={`https://www.cjdropshipping.com/product/${product.slug || product.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-p-${product.id}.html`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 text-xs text-main-1 hover:text-main-1/80 transition-colors"
-                      >
-                        <HiOutlineExternalLink className="w-4 h-4" />
-                        View on CJ Dropshipping
-                      </a>
-                      <Button 
-                        size="sm" 
-                        onClick={() => importCJProduct(product)}
-                        disabled={isSaving}
-                        leftIcon={<HiOutlineCloudDownload className="w-4 h-4" />}
-                      >
-                        Import Product
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
@@ -557,4 +742,3 @@ export default function ProductsPage() {
     </div>
   );
 }
-

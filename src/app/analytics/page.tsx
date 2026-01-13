@@ -173,10 +173,17 @@ export default function AnalyticsPage() {
       // Fetch overall stats
       const { data: statsData } = await supabase.rpc('get_admin_dashboard_stats');
       if (statsData && statsData[0]) {
+        // Also fetch unique customer count
+        const { count: customerCount } = await supabase
+          .from('orders')
+          .select('billing_email', { count: 'exact', head: true })
+          .not('billing_email', 'is', null);
+        
         setStats({
           totalRevenue: Number(statsData[0].total_revenue) || 0,
           totalOrders: Number(statsData[0].total_orders) || 0,
           totalMembers: Number(statsData[0].total_members) || 0,
+          totalCustomers: customerCount || 0,
           pendingOrders: Number(statsData[0].pending_orders) || 0,
           todayRevenue: Number(statsData[0].today_revenue) || 0,
           todayOrders: Number(statsData[0].today_orders) || 0,

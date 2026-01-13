@@ -6,6 +6,7 @@ import {
   HiOutlineHome,
   HiOutlineShoppingCart,
   HiOutlineUsers,
+  HiOutlineUserCircle,
   HiOutlineCube,
   HiOutlineStar,
   HiOutlineTicket,
@@ -28,6 +29,7 @@ interface NavItem {
 const navigation: NavItem[] = [
   { name: 'Dashboard', href: '/', icon: HiOutlineHome },
   { name: 'Orders', href: '/orders', icon: HiOutlineShoppingCart },
+  { name: 'Customers', href: '/customers', icon: HiOutlineUserCircle },
   { name: 'Members', href: '/members', icon: HiOutlineUsers },
   { name: 'Products', href: '/products', icon: HiOutlineCube },
   { name: 'Reviews', href: '/reviews', icon: HiOutlineStar },

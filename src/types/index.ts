@@ -220,6 +220,7 @@ export interface DashboardStats {
   totalRevenue: number;
   totalOrders: number;
   totalMembers: number;
+  totalCustomers: number;
   pendingOrders: number;
   todayRevenue: number;
   todayOrders: number;
@@ -290,5 +291,23 @@ export interface AdminUser {
   email: string;
   role: AdminRole;
   created_at: string;
+}
+
+// Customer types (aggregated from orders)
+export interface Customer {
+  email: string;
+  name: string;
+  phone: string | null;
+  city: string | null;
+  country: string | null;
+  totalOrders: number;
+  totalSpent: number;
+  firstOrderDate: string;
+  lastOrderDate: string;
+  avgOrderValue: number;
+  orders?: Order[];
+  // Linked member info if registered
+  memberId?: string;
+  memberProfile?: UserProfile;
 }
 

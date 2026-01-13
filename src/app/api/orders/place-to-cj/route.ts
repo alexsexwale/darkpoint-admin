@@ -48,29 +48,94 @@ export async function POST(request: NextRequest) {
       quantity: item.quantity,
     }));
 
-    // Map country to CJ country code (simplified - expand as needed)
+    // Map country to CJ country code (comprehensive mapping)
     const countryCodeMap: Record<string, string> = {
+      // South Africa variations
       'South Africa': 'ZA',
+      'south africa': 'ZA',
       'SA': 'ZA',
+      'ZA': 'ZA',
+      'RSA': 'ZA',
+      // US variations
       'United States': 'US',
+      'United States of America': 'US',
       'USA': 'US',
+      'US': 'US',
+      'America': 'US',
+      // UK variations
       'United Kingdom': 'GB',
       'UK': 'GB',
+      'GB': 'GB',
+      'Great Britain': 'GB',
+      'England': 'GB',
+      // Other common countries
+      'Canada': 'CA',
+      'CA': 'CA',
+      'Australia': 'AU',
+      'AU': 'AU',
+      'Germany': 'DE',
+      'DE': 'DE',
+      'France': 'FR',
+      'FR': 'FR',
+      'Netherlands': 'NL',
+      'NL': 'NL',
+      'Nigeria': 'NG',
+      'NG': 'NG',
+      'Kenya': 'KE',
+      'KE': 'KE',
+      'Ghana': 'GH',
+      'GH': 'GH',
+      'Zimbabwe': 'ZW',
+      'ZW': 'ZW',
+      'Botswana': 'BW',
+      'BW': 'BW',
+      'Namibia': 'NA',
+      'NA': 'NA',
+      'Mozambique': 'MZ',
+      'MZ': 'MZ',
     };
 
-    const countryCode = countryCodeMap[order.shipping_country || ''] || 'ZA';
+    // Get country code - case insensitive search with fallback
+    const shippingCountry = (order.shipping_country || '').trim();
+    let countryCode = countryCodeMap[shippingCountry] || countryCodeMap[shippingCountry.toLowerCase()];
+    
+    // If still not found, check if it's already a 2-letter code
+    if (!countryCode && shippingCountry.length === 2) {
+      countryCode = shippingCountry.toUpperCase();
+    }
+    
+    // Default to ZA if nothing found
+    if (!countryCode) {
+      console.warn(`Unknown country: "${shippingCountry}", defaulting to ZA`);
+      countryCode = 'ZA';
+    }
+
+    // Validate required shipping fields
+    const shippingName = (order.shipping_name || '').trim();
+    const shippingCity = (order.shipping_city || '').trim();
+    const shippingAddress = `${order.shipping_address_line1 || ''} ${order.shipping_address_line2 || ''}`.trim();
+    
+    if (!shippingName) {
+      return NextResponse.json({ success: false, error: 'Shipping name is required' }, { status: 400 });
+    }
+    if (!shippingCity) {
+      return NextResponse.json({ success: false, error: 'Shipping city is required' }, { status: 400 });
+    }
+    if (!shippingAddress) {
+      return NextResponse.json({ success: false, error: 'Shipping address is required' }, { status: 400 });
+    }
 
     // Create order with CJ
     const cjResult = await cjDropshipping.createOrder({
       orderNumber: order.order_number,
       shippingAddress: {
         countryCode,
-        province: order.shipping_province || '',
-        city: order.shipping_city || '',
-        address: `${order.shipping_address_line1 || ''} ${order.shipping_address_line2 || ''}`.trim(),
-        zip: order.shipping_postal_code || '',
-        phone: order.shipping_phone || '',
-        fullName: order.shipping_name || '',
+        province: (order.shipping_province || shippingCity).trim(), // Fallback to city if province is empty
+        city: shippingCity,
+        address: shippingAddress,
+        zip: (order.shipping_postal_code || '0000').trim(), // Default zip if empty
+        phone: (order.shipping_phone || '0000000000').trim(), // Default phone if empty
+        fullName: shippingName,
       },
       products: cjProducts,
       remark: order.customer_notes || '',

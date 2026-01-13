@@ -4,4 +4,5 @@ export { Badge, OrderStatusBadge, PaymentStatusBadge, ReviewStatusBadge, VIPTier
 export { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableEmpty, TableSkeleton } from './Table';
 export { Input, Textarea, Select } from './Input';
 export { Modal, ConfirmDialog } from './Modal';
+export { Checkbox } from './Checkbox';
 

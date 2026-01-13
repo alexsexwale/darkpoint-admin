@@ -174,6 +174,12 @@ export default function OrdersPage() {
           <Button variant="secondary" onClick={exportOrders} leftIcon={<HiOutlineDownload className="w-4 h-4" />} size="sm">
             <span className="hidden sm:inline">Export</span>
           </Button>
+          <Link href="/orders/bulk">
+            <Button leftIcon={<HiOutlineTruck className="w-4 h-4" />} size="sm">
+              <span className="hidden sm:inline">Bulk Fulfill</span>
+              <span className="sm:hidden">Bulk</span>
+            </Button>
+          </Link>
         </div>
       </div>
 

@@ -20,17 +20,33 @@ export const supabase = createClient(
 );
 
 // Server client with service role key for admin operations
+// Service role key bypasses Row Level Security (RLS)
 export const createServerClient = () => {
   const serviceRoleKey = env.supabase.serviceRoleKey;
   
   if (!supabaseUrl || !serviceRoleKey) {
-    throw new Error("Supabase service role key not configured");
+    console.error('Missing Supabase config:', { 
+      hasUrl: !!supabaseUrl, 
+      hasServiceKey: !!serviceRoleKey,
+      keyPrefix: serviceRoleKey?.substring(0, 20) 
+    });
+    throw new Error("Supabase service role key not configured. Please set SUPABASE_SERVICE_ROLE_KEY in .env.local");
   }
   
   return createClient(supabaseUrl, serviceRoleKey, {
     auth: {
       autoRefreshToken: false,
       persistSession: false,
+    },
+    db: {
+      schema: 'public',
+    },
+    // The service role key should automatically bypass RLS
+    // but we're being explicit about the headers
+    global: {
+      headers: {
+        Authorization: `Bearer ${serviceRoleKey}`,
+      },
     },
   });
 };
