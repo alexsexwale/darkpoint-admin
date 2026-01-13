@@ -441,28 +441,71 @@ class CJDropshippingAPI {
     }
   }
 
-  // Get shipping methods for a product
+  // Get shipping methods for a product using variant-based calculation
   async getShippingMethods(params: {
     startCountryCode?: string;
     endCountryCode: string;
     productWeight: number;
-  }): Promise<{ success: boolean; data?: Array<{ logisticName: string; logisticPrice: number; logisticTime: string }>; error?: string }> {
+    productId?: string;
+    variantId?: string;
+    quantity?: number;
+  }): Promise<{ success: boolean; data?: Array<{ logisticName: string; logisticPrice: number; logisticTime: string; logisticAging?: string }>; error?: string }> {
     try {
-      const response: AxiosResponse = await this.client.post('/v1/logistic/freightCalculate', {
+      // Try the product-based shipping calculation first
+      if (params.productId) {
+        const productResponse: AxiosResponse = await this.client.post('/v1/logistic/freightCalculate', {
+          startCountryCode: params.startCountryCode || 'CN',
+          endCountryCode: params.endCountryCode,
+          products: [{
+            quantity: params.quantity || 1,
+            vid: params.variantId || params.productId,
+          }],
+        });
+
+        if (productResponse.data.result || productResponse.data.success) {
+          const data = productResponse.data.data;
+          if (Array.isArray(data) && data.length > 0) {
+            return {
+              success: true,
+              data: data.map((item: any) => ({
+                logisticName: item.logisticName || item.logisticNameEn || 'Shipping',
+                logisticPrice: parseFloat(item.logisticPrice || item.logisticPriceEn || '0'),
+                logisticTime: item.logisticAging || item.logisticTime || '',
+                logisticAging: item.logisticAging,
+              })),
+            };
+          }
+        }
+      }
+
+      // Fallback: Try weight-based calculation
+      const weightResponse: AxiosResponse = await this.client.post('/v1/logistic/freightCalculate', {
         startCountryCode: params.startCountryCode || 'CN',
         endCountryCode: params.endCountryCode,
         weight: params.productWeight,
       });
 
-      if (response.data.result || response.data.success) {
+      if (weightResponse.data.result || weightResponse.data.success) {
+        const data = weightResponse.data.data;
+        if (Array.isArray(data) && data.length > 0) {
+          return {
+            success: true,
+            data: data.map((item: any) => ({
+              logisticName: item.logisticName || item.logisticNameEn || 'Shipping',
+              logisticPrice: parseFloat(item.logisticPrice || item.logisticPriceEn || '0'),
+              logisticTime: item.logisticAging || item.logisticTime || '',
+              logisticAging: item.logisticAging,
+            })),
+          };
+        }
         return {
           success: true,
-          data: response.data.data || [],
+          data: [],
         };
       } else {
         return {
           success: false,
-          error: response.data.message || 'Failed to get shipping methods',
+          error: weightResponse.data.message || 'Failed to get shipping methods',
         };
       }
     } catch (error: unknown) {

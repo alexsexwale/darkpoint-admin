@@ -29,6 +29,8 @@ import {
   HiOutlineDocumentText,
   HiOutlineLightBulb,
   HiOutlineCollection,
+  HiOutlineTruck,
+  HiOutlineArchive,
 } from 'react-icons/hi';
 import clsx from 'clsx';
 
@@ -111,7 +113,46 @@ export default function ProductDetailPage() {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  
+  // Shipping state
+  const [shippingOptions, setShippingOptions] = useState<Array<{
+    name: string;
+    price: number;
+    currency: string;
+    minDays: number;
+    maxDays: number;
+    deliveryTime: string;
+  }>>([]);
+  const [isLoadingShipping, setIsLoadingShipping] = useState(false);
+  const [shippingError, setShippingError] = useState<string | null>(null);
+  
+  // Stock state
+  const [stockInfo, setStockInfo] = useState<{
+    totalStock: number;
+    stockStatus: 'in_stock' | 'low_stock' | 'out_of_stock';
+    variants: Array<{
+      id: string;
+      name: string;
+      value: string;
+      stock: number;
+      sku: string;
+    }>;
+    lastChecked: string;
+  } | null>(null);
+  const [isLoadingStock, setIsLoadingStock] = useState(false);
+  const [stockError, setStockError] = useState<string | null>(null);
+  
+  // Inline pricing edit state
+  const [isEditingPricing, setIsEditingPricing] = useState(false);
+  const [pricingForm, setPricingForm] = useState({
+    sell_price: 0,
+    markup_percent: 0,
+  });
+  const [isSavingPricing, setIsSavingPricing] = useState(false);
+  const [currentExchangeRate, setCurrentExchangeRate] = useState<number | null>(null);
   
   // Edit form state
   const [editForm, setEditForm] = useState({
@@ -129,6 +170,58 @@ export default function ProductDetailPage() {
   useEffect(() => {
     fetchProduct();
   }, [productId]);
+
+  // Fetch shipping and stock when product is loaded
+  useEffect(() => {
+    if (product) {
+      fetchShipping();
+      fetchStock();
+    }
+  }, [product?.id]);
+
+  const fetchStock = async () => {
+    if (!product) return;
+    setIsLoadingStock(true);
+    setStockError(null);
+    
+    try {
+      const response = await fetch(`/api/products/${product.id}/stock`);
+      const result = await response.json();
+      
+      if (result.success) {
+        setStockInfo(result.data);
+      } else {
+        setStockError(result.error || 'Failed to fetch stock');
+      }
+    } catch (err) {
+      console.error('Error fetching stock:', err);
+      setStockError('Failed to fetch stock information');
+    } finally {
+      setIsLoadingStock(false);
+    }
+  };
+
+  const fetchShipping = async () => {
+    if (!product) return;
+    setIsLoadingShipping(true);
+    setShippingError(null);
+    
+    try {
+      const response = await fetch(`/api/products/${product.id}/shipping`);
+      const result = await response.json();
+      
+      if (result.success) {
+        setShippingOptions(result.data || []);
+      } else {
+        setShippingError(result.error || 'Failed to fetch shipping');
+      }
+    } catch (err) {
+      console.error('Error fetching shipping:', err);
+      setShippingError('Failed to fetch shipping information');
+    } finally {
+      setIsLoadingShipping(false);
+    }
+  };
 
   const fetchProduct = async () => {
     setIsLoading(true);
@@ -153,11 +246,67 @@ export default function ProductDetailPage() {
         is_active: data.is_active,
         is_featured: data.is_featured,
       });
+      setPricingForm({
+        sell_price: data.sell_price,
+        markup_percent: data.markup_percent,
+      });
     } catch (err) {
       console.error('Error fetching product:', err);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const fetchExchangeRate = async () => {
+    try {
+      const response = await fetch('/api/exchange-rate');
+      const result = await response.json();
+      if (result.success) {
+        setCurrentExchangeRate(result.rate);
+      }
+    } catch (err) {
+      console.error('Error fetching exchange rate:', err);
+    }
+  };
+
+  const handlePricingSave = async () => {
+    if (!product) return;
+    setIsSavingPricing(true);
+    
+    try {
+      const { error } = await supabase
+        .from('admin_products')
+        .update({
+          sell_price: pricingForm.sell_price,
+          markup_percent: pricingForm.markup_percent,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', product.id);
+      
+      if (error) throw error;
+      
+      await fetchProduct();
+      setIsEditingPricing(false);
+    } catch (err) {
+      console.error('Error saving pricing:', err);
+      alert('Failed to save pricing');
+    } finally {
+      setIsSavingPricing(false);
+    }
+  };
+
+  const recalculatePriceFromMarkup = (markup: number) => {
+    if (!product) return;
+    const costZAR = product.base_price;
+    const newSellPrice = Math.ceil(costZAR * (1 + markup / 100));
+    setPricingForm(prev => ({ ...prev, markup_percent: markup, sell_price: newSellPrice }));
+  };
+
+  const recalculateMarkupFromPrice = (sellPrice: number) => {
+    if (!product) return;
+    const costZAR = product.base_price;
+    const newMarkup = Math.round(((sellPrice - costZAR) / costZAR) * 100);
+    setPricingForm(prev => ({ ...prev, sell_price: sellPrice, markup_percent: Math.max(0, newMarkup) }));
   };
 
   const handleSave = async () => {
@@ -220,6 +369,39 @@ export default function ProductDetailPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleSync = async () => {
+    if (!product) return;
+    setIsSyncing(true);
+    setSyncMessage(null);
+    
+    try {
+      const response = await fetch(`/api/products/${product.id}/sync`, {
+        method: 'POST',
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        setSyncMessage({ 
+          type: 'success', 
+          text: `Synced! ${result.imagesCount} images, ${result.variantsCount || 0} variants loaded.` 
+        });
+        // Refresh product data
+        await fetchProduct();
+        setSelectedImage(0); // Reset to first image
+      } else {
+        setSyncMessage({ type: 'error', text: result.error || 'Sync failed' });
+      }
+    } catch (err) {
+      console.error('Sync error:', err);
+      setSyncMessage({ type: 'error', text: 'Failed to sync with CJ Dropshipping' });
+    } finally {
+      setIsSyncing(false);
+      // Clear message after 5 seconds
+      setTimeout(() => setSyncMessage(null), 5000);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -246,33 +428,79 @@ export default function ProductDetailPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => router.push('/products')}
-            leftIcon={<HiOutlineArrowLeft className="w-4 h-4" />}
-          >
-            Back
-          </Button>
-          <div>
-            <h1 className="text-2xl font-heading text-gray-1">{product.name}</h1>
-            <p className="text-sm text-gray-5 mt-1">
-              Product ID: {product.id.slice(0, 8)}...
-            </p>
-          </div>
+      {/* Back Navigation */}
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={() => router.push('/products')}
+        leftIcon={<HiOutlineArrowLeft className="w-4 h-4" />}
+      >
+        Back to Products
+      </Button>
+
+      {/* Product Header Card */}
+      <div className="bg-dark-2 rounded-xl border border-dark-4 p-6">
+        {/* Title and ID */}
+        <div className="mb-6">
+          <h1 className="text-2xl lg:text-3xl font-heading text-gray-1 leading-tight mb-2">
+            {product.name}
+          </h1>
+          <p className="text-sm text-gray-5">
+            Product ID: <span className="font-mono text-gray-3">{product.id.slice(0, 8)}...</span>
+          </p>
         </div>
-        
-        <div className="flex items-center gap-2">
+
+        {/* Status Badges */}
+        <div className="flex flex-wrap items-center gap-2 mb-6">
+          <span className={clsx(
+            'px-3 py-1.5 rounded-full text-xs font-medium',
+            product.is_active 
+              ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+              : 'bg-red-500/20 text-red-400 border border-red-500/30'
+          )}>
+            {product.is_active ? '● Active' : '○ Inactive'}
+          </span>
+          {product.is_featured && (
+            <span className="px-3 py-1.5 rounded-full text-xs font-medium bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">
+              ★ Featured
+            </span>
+          )}
+          {product.category && (
+            <span className="px-3 py-1.5 rounded-full text-xs font-medium bg-blue-500/20 text-blue-400 border border-blue-500/30">
+              {product.category}
+            </span>
+          )}
+          <a
+            href={`https://www.cjdropshipping.com/product/${product.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-p-${product.cj_product_id}.html`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-3 py-1.5 rounded-full text-xs font-medium bg-main-1/10 text-main-1 border border-main-1/30 hover:bg-main-1/20 transition-colors inline-flex items-center gap-1.5"
+          >
+            <HiOutlineExternalLink className="w-3.5 h-3.5" />
+            View on CJ
+          </a>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex flex-wrap gap-3 pt-4 border-t border-dark-4">
           <Button
             variant="secondary"
             size="sm"
             onClick={() => copyToClipboard(product.id)}
             leftIcon={<HiOutlineClipboardCopy className="w-4 h-4" />}
+            className="min-w-[100px]"
           >
             {copied ? 'Copied!' : 'Copy ID'}
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={handleSync}
+            isLoading={isSyncing}
+            leftIcon={!isSyncing ? <HiOutlineRefresh className="w-4 h-4" /> : undefined}
+            className="min-w-[130px]"
+          >
+            {isSyncing ? 'Syncing...' : 'Sync from CJ'}
           </Button>
           <Button
             variant="secondary"
@@ -280,7 +508,7 @@ export default function ProductDetailPage() {
             onClick={() => setIsEditModalOpen(true)}
             leftIcon={<HiOutlinePencil className="w-4 h-4" />}
           >
-            Edit
+            Edit Product
           </Button>
           <Button
             variant="danger"
@@ -291,37 +519,23 @@ export default function ProductDetailPage() {
             Delete
           </Button>
         </div>
-      </div>
 
-      {/* Status Badges */}
-      <div className="flex flex-wrap items-center gap-3">
-        <span className={clsx(
-          'px-3 py-1 rounded-full text-xs font-medium',
-          product.is_active 
-            ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-            : 'bg-red-500/20 text-red-400 border border-red-500/30'
-        )}>
-          {product.is_active ? '● Active' : '○ Inactive'}
-        </span>
-        {product.is_featured && (
-          <span className="px-3 py-1 rounded-full text-xs font-medium bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">
-            ★ Featured
-          </span>
+        {/* Sync Message */}
+        {syncMessage && (
+          <div className={clsx(
+            'mt-4 px-4 py-3 rounded-lg flex items-center gap-2 text-sm',
+            syncMessage.type === 'success' 
+              ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
+              : 'bg-red-500/20 text-red-400 border border-red-500/30'
+          )}>
+            {syncMessage.type === 'success' ? (
+              <HiOutlineCheckCircle className="w-5 h-5 flex-shrink-0" />
+            ) : (
+              <HiOutlineXCircle className="w-5 h-5 flex-shrink-0" />
+            )}
+            <span>{syncMessage.text}</span>
+          </div>
         )}
-        {product.category && (
-          <span className="px-3 py-1 rounded-full text-xs font-medium bg-blue-500/20 text-blue-400 border border-blue-500/30">
-            {product.category}
-          </span>
-        )}
-        <a
-          href={`https://www.cjdropshipping.com/product/${product.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-p-${product.cj_product_id}.html`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-main-1/20 text-main-1 border border-main-1/30 hover:bg-main-1/30 transition-colors"
-        >
-          <HiOutlineExternalLink className="w-3 h-3" />
-          View on CJ
-        </a>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -386,10 +600,52 @@ export default function ProductDetailPage() {
         <div className="space-y-6">
           {/* Pricing Card */}
           <div className="bg-dark-3 rounded-xl border border-dark-4 p-5">
-            <h3 className="text-sm font-medium text-gray-5 uppercase tracking-wider mb-4 flex items-center gap-2">
-              <HiOutlineCurrencyDollar className="w-4 h-4" />
-              Pricing Information
-            </h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-medium text-gray-5 uppercase tracking-wider flex items-center gap-2">
+                <HiOutlineCurrencyDollar className="w-4 h-4" />
+                Pricing Information
+              </h3>
+              {!isEditingPricing ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    setIsEditingPricing(true);
+                    fetchExchangeRate();
+                  }}
+                  leftIcon={<HiOutlinePencil className="w-3.5 h-3.5" />}
+                  className="!py-1 !px-2 text-xs"
+                >
+                  Edit Pricing
+                </Button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      setIsEditingPricing(false);
+                      setPricingForm({
+                        sell_price: product.sell_price,
+                        markup_percent: product.markup_percent,
+                      });
+                    }}
+                    className="!py-1 !px-2 text-xs"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={handlePricingSave}
+                    isLoading={isSavingPricing}
+                    className="!py-1 !px-2 text-xs"
+                  >
+                    Save
+                  </Button>
+                </div>
+              )}
+            </div>
             
             <div className="space-y-4">
               {/* Price Flow - Stacked on mobile, grid on larger screens */}
@@ -410,56 +666,160 @@ export default function ProductDetailPage() {
                 </div>
                 <div className="p-3 bg-dark-4/50 rounded-lg flex sm:flex-col items-center sm:items-center justify-between sm:justify-center sm:text-center">
                   <p className="text-xs text-gray-5 sm:order-2 sm:mt-1">Sell Price (ZAR)</p>
-                  <p className="text-lg sm:text-xl font-bold text-green-400 font-mono sm:order-1">
-                    {formatZAR(product.sell_price)}
-                  </p>
+                  {isEditingPricing ? (
+                    <input
+                      type="number"
+                      value={pricingForm.sell_price}
+                      onChange={(e) => recalculateMarkupFromPrice(parseFloat(e.target.value) || 0)}
+                      className="w-full text-lg sm:text-xl font-bold text-green-400 font-mono text-center bg-dark-3 border border-dark-4 rounded px-2 py-1 focus:border-main-1 focus:outline-none sm:order-1"
+                      min="0"
+                    />
+                  ) : (
+                    <p className="text-lg sm:text-xl font-bold text-green-400 font-mono sm:order-1">
+                      {formatZAR(product.sell_price)}
+                    </p>
+                  )}
                 </div>
               </div>
+
+              {/* Inline Editing Section */}
+              {isEditingPricing && (
+                <div className="p-4 bg-main-1/5 border border-main-1/20 rounded-lg space-y-4">
+                  <div>
+                    <label className="block text-xs text-gray-5 mb-2">Quick Markup Selection</label>
+                    <div className="flex flex-wrap gap-2">
+                      {[50, 100, 150, 200, 250, 300].map((markup) => (
+                        <button
+                          key={markup}
+                          onClick={() => recalculatePriceFromMarkup(markup)}
+                          className={clsx(
+                            'px-3 py-1.5 rounded text-xs font-medium transition-colors',
+                            pricingForm.markup_percent === markup
+                              ? 'bg-main-1 text-white'
+                              : 'bg-dark-4 text-gray-3 hover:bg-dark-4/80'
+                          )}
+                        >
+                          {markup}%
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs text-gray-5 mb-2">Custom Markup %</label>
+                      <input
+                        type="number"
+                        value={pricingForm.markup_percent}
+                        onChange={(e) => recalculatePriceFromMarkup(Math.max(0, parseFloat(e.target.value) || 0))}
+                        className="w-full px-3 py-2 bg-dark-3 border border-dark-4 rounded text-gray-1 focus:border-main-1 focus:outline-none"
+                        min="0"
+                        placeholder="Enter markup %"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-5 mb-2">Custom Sell Price (ZAR)</label>
+                      <input
+                        type="number"
+                        value={pricingForm.sell_price}
+                        onChange={(e) => recalculateMarkupFromPrice(Math.max(0, parseFloat(e.target.value) || 0))}
+                        className="w-full px-3 py-2 bg-dark-3 border border-dark-4 rounded text-gray-1 focus:border-main-1 focus:outline-none"
+                        min="0"
+                        placeholder="Enter sell price"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Preview */}
+                  <div className="pt-3 border-t border-dark-4/50">
+                    <p className="text-xs text-gray-5 mb-2">Preview:</p>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-3">New Profit:</span>
+                      <span className="text-lg font-bold text-main-1">
+                        {formatZAR(pricingForm.sell_price - product.base_price)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between mt-1">
+                      <span className="text-sm text-gray-3">New Margin:</span>
+                      <span className={clsx(
+                        'text-lg font-bold',
+                        ((pricingForm.sell_price - product.base_price) / pricingForm.sell_price * 100) >= 60 ? 'text-green-400' :
+                        ((pricingForm.sell_price - product.base_price) / pricingForm.sell_price * 100) >= 40 ? 'text-yellow-400' : 'text-red-400'
+                      )}>
+                        {pricingForm.sell_price > 0 
+                          ? ((pricingForm.sell_price - product.base_price) / pricingForm.sell_price * 100).toFixed(1) 
+                          : 0}%
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Current Exchange Rate */}
+                  {currentExchangeRate && (
+                    <div className="pt-3 border-t border-dark-4/50">
+                      <p className="text-xs text-gray-5">
+                        Current exchange rate: <span className="text-gray-3">1 USD = R{currentExchangeRate.toFixed(2)}</span>
+                        {product.exchange_rate_used && currentExchangeRate !== product.exchange_rate_used && (
+                          <span className={clsx(
+                            'ml-2',
+                            currentExchangeRate > product.exchange_rate_used ? 'text-red-400' : 'text-green-400'
+                          )}>
+                            ({currentExchangeRate > product.exchange_rate_used ? '↑' : '↓'} 
+                            {Math.abs(((currentExchangeRate - product.exchange_rate_used) / product.exchange_rate_used) * 100).toFixed(1)}% 
+                            since import)
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Profit Summary */}
-              <div className="pt-4 border-t border-dark-4">
-                <div className="flex justify-between items-center mb-3">
-                  <span className="text-sm text-gray-5">Profit per Sale</span>
-                  <span className="text-base sm:text-lg font-bold text-main-1">{formatZAR(profitZAR)}</span>
-                </div>
-                <div className="flex justify-between items-center mb-3">
-                  <span className="text-sm text-gray-5">Markup</span>
-                  <span className="text-base sm:text-lg font-bold text-gray-1">{product.markup_percent}%</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-5">Profit Margin</span>
-                  <span className={clsx(
-                    'text-base sm:text-lg font-bold',
-                    profitMargin >= 60 ? 'text-green-400' :
-                    profitMargin >= 40 ? 'text-yellow-400' : 'text-red-400'
-                  )}>
-                    {profitMargin.toFixed(1)}%
-                  </span>
-                </div>
+              {!isEditingPricing && (
+                <div className="pt-4 border-t border-dark-4">
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="text-sm text-gray-5">Profit per Sale</span>
+                    <span className="text-base sm:text-lg font-bold text-main-1">{formatZAR(profitZAR)}</span>
+                  </div>
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="text-sm text-gray-5">Markup</span>
+                    <span className="text-base sm:text-lg font-bold text-gray-1">{product.markup_percent}%</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-5">Profit Margin</span>
+                    <span className={clsx(
+                      'text-base sm:text-lg font-bold',
+                      profitMargin >= 60 ? 'text-green-400' :
+                      profitMargin >= 40 ? 'text-yellow-400' : 'text-red-400'
+                    )}>
+                      {profitMargin.toFixed(1)}%
+                    </span>
+                  </div>
 
-                {/* Margin Bar */}
-                <div className="mt-3 h-3 bg-dark-4 rounded-full overflow-hidden">
-                  <div 
-                    className={clsx(
-                      'h-full rounded-full transition-all',
-                      profitMargin >= 60 ? 'bg-gradient-to-r from-green-500 to-emerald-400' :
-                      profitMargin >= 40 ? 'bg-gradient-to-r from-yellow-500 to-amber-400' :
-                      'bg-gradient-to-r from-red-500 to-orange-400'
-                    )}
-                    style={{ width: `${Math.min(profitMargin, 100)}%` }}
-                  />
+                  {/* Margin Bar */}
+                  <div className="mt-3 h-3 bg-dark-4 rounded-full overflow-hidden">
+                    <div 
+                      className={clsx(
+                        'h-full rounded-full transition-all',
+                        profitMargin >= 60 ? 'bg-gradient-to-r from-green-500 to-emerald-400' :
+                        profitMargin >= 40 ? 'bg-gradient-to-r from-yellow-500 to-amber-400' :
+                        'bg-gradient-to-r from-red-500 to-orange-400'
+                      )}
+                      style={{ width: `${Math.min(profitMargin, 100)}%` }}
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Exchange Rate Info */}
-              {product.exchange_rate_used && (
+              {product.exchange_rate_used && !isEditingPricing && (
                 <div className="pt-3 border-t border-dark-4 text-xs text-gray-5">
                   <p>Exchange rate at import: 1 USD = R{product.exchange_rate_used.toFixed(2)}</p>
                 </div>
               )}
 
               {/* Compare At Price */}
-              {product.compare_at_price && (
+              {product.compare_at_price && !isEditingPricing && (
                 <div className="pt-3 border-t border-dark-4">
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-5">Compare at Price</span>
@@ -468,6 +828,238 @@ export default function ProductDetailPage() {
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Stock Information Card */}
+          <div className="bg-dark-3 rounded-xl border border-dark-4 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-medium text-gray-5 uppercase tracking-wider flex items-center gap-2">
+                <HiOutlineArchive className="w-4 h-4" />
+                CJ Dropshipping Stock
+              </h3>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={fetchStock}
+                isLoading={isLoadingStock}
+                leftIcon={!isLoadingStock ? <HiOutlineRefresh className="w-3.5 h-3.5" /> : undefined}
+                className="!py-1 !px-2 text-xs"
+              >
+                Refresh
+              </Button>
+            </div>
+
+            {isLoadingStock ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-main-1"></div>
+              </div>
+            ) : stockError ? (
+              <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
+                <p className="text-sm text-red-400">{stockError}</p>
+                <button 
+                  onClick={fetchStock}
+                  className="mt-2 text-xs text-red-400 hover:text-red-300 underline"
+                >
+                  Try again
+                </button>
+              </div>
+            ) : stockInfo ? (
+              <div className="space-y-4">
+                {/* Total Stock Display */}
+                <div className={clsx(
+                  'p-4 rounded-lg border text-center',
+                  stockInfo.stockStatus === 'out_of_stock' 
+                    ? 'bg-red-500/10 border-red-500/30' 
+                    : stockInfo.stockStatus === 'low_stock'
+                    ? 'bg-yellow-500/10 border-yellow-500/30'
+                    : 'bg-green-500/10 border-green-500/30'
+                )}>
+                  <p className={clsx(
+                    'text-4xl font-bold font-mono',
+                    stockInfo.stockStatus === 'out_of_stock' 
+                      ? 'text-red-400' 
+                      : stockInfo.stockStatus === 'low_stock'
+                      ? 'text-yellow-400'
+                      : 'text-green-400'
+                  )}>
+                    {stockInfo.totalStock.toLocaleString()}
+                  </p>
+                  <p className="text-sm text-gray-5 mt-1">Total Units Available</p>
+                  <span className={clsx(
+                    'inline-block mt-2 px-3 py-1 rounded-full text-xs font-medium',
+                    stockInfo.stockStatus === 'out_of_stock' 
+                      ? 'bg-red-500/20 text-red-400' 
+                      : stockInfo.stockStatus === 'low_stock'
+                      ? 'bg-yellow-500/20 text-yellow-400'
+                      : 'bg-green-500/20 text-green-400'
+                  )}>
+                    {stockInfo.stockStatus === 'out_of_stock' 
+                      ? '⚠ Out of Stock' 
+                      : stockInfo.stockStatus === 'low_stock'
+                      ? '⚠ Low Stock'
+                      : '✓ In Stock'}
+                  </span>
+                </div>
+
+                {/* Variant Stock Breakdown */}
+                {stockInfo.variants.length > 0 && (
+                  <div>
+                    <p className="text-xs text-gray-5 mb-2">Stock by Variant:</p>
+                    <div className="max-h-48 overflow-y-auto space-y-2">
+                      {stockInfo.variants.map((variant, index) => (
+                        <div 
+                          key={variant.id || index}
+                          className="flex items-center justify-between p-2 bg-dark-4/50 rounded-lg text-sm"
+                        >
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <span className="text-gray-3 truncate">
+                              {variant.name ? `${variant.name}: ${variant.value}` : variant.value || variant.sku || `Variant ${index + 1}`}
+                            </span>
+                            {variant.sku && (
+                              <span className="text-xs text-gray-5 font-mono hidden sm:inline">
+                                ({variant.sku})
+                              </span>
+                            )}
+                          </div>
+                          <span className={clsx(
+                            'font-bold font-mono ml-2',
+                            variant.stock === 0 
+                              ? 'text-red-400' 
+                              : variant.stock < 10
+                              ? 'text-yellow-400'
+                              : 'text-green-400'
+                          )}>
+                            {variant.stock}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Last Checked */}
+                <div className="pt-3 border-t border-dark-4 text-xs text-gray-5">
+                  <p>Last checked: {new Date(stockInfo.lastChecked).toLocaleString('en-ZA')}</p>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-6 text-gray-5">
+                <HiOutlineArchive className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">No stock information available</p>
+              </div>
+            )}
+          </div>
+
+          {/* Shipping Information Card */}
+          <div className="bg-dark-3 rounded-xl border border-dark-4 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-medium text-gray-5 uppercase tracking-wider flex items-center gap-2">
+                <HiOutlineTruck className="w-4 h-4" />
+                Shipping to South Africa
+              </h3>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={fetchShipping}
+                isLoading={isLoadingShipping}
+                leftIcon={!isLoadingShipping ? <HiOutlineRefresh className="w-3.5 h-3.5" /> : undefined}
+                className="!py-1 !px-2 text-xs"
+              >
+                Refresh
+              </Button>
+            </div>
+
+            {isLoadingShipping ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-main-1"></div>
+              </div>
+            ) : shippingError ? (
+              <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
+                <p className="text-sm text-red-400">{shippingError}</p>
+                <button 
+                  onClick={fetchShipping}
+                  className="mt-2 text-xs text-red-400 hover:text-red-300 underline"
+                >
+                  Try again
+                </button>
+              </div>
+            ) : shippingOptions.length === 0 ? (
+              <div className="text-center py-6 text-gray-5">
+                <HiOutlineTruck className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">No shipping options available</p>
+                <p className="text-xs mt-1">Product weight may not be set</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {shippingOptions.slice(0, 5).map((option, index) => (
+                  <div 
+                    key={index}
+                    className={clsx(
+                      'p-3 rounded-lg border transition-all',
+                      index === 0 
+                        ? 'bg-green-500/10 border-green-500/30' 
+                        : 'bg-dark-4/50 border-dark-4 hover:border-dark-4/80'
+                    )}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        {index === 0 && (
+                          <span className="px-1.5 py-0.5 bg-green-500/20 text-green-400 text-[10px] font-medium rounded">
+                            CHEAPEST
+                          </span>
+                        )}
+                        <span className="text-sm font-medium text-gray-1">{option.name}</span>
+                      </div>
+                      <span className="text-sm font-bold text-main-1">
+                        {formatUSD(option.price)}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-4 text-xs text-gray-5">
+                      <div className="flex items-center gap-1">
+                        <HiOutlineClock className="w-3.5 h-3.5" />
+                        <span>
+                          {option.minDays === option.maxDays 
+                            ? `${option.minDays} days` 
+                            : `${option.minDays}-${option.maxDays} days`}
+                        </span>
+                      </div>
+                      {option.price > 0 && (
+                        <span className="text-gray-5/70">
+                          ~{formatZAR(option.price * (product.exchange_rate_used || 18))} ZAR
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                
+                {shippingOptions.length > 5 && (
+                  <p className="text-xs text-gray-5 text-center pt-2">
+                    +{shippingOptions.length - 5} more shipping options available
+                  </p>
+                )}
+                
+                {/* Shipping Summary */}
+                <div className="pt-3 mt-3 border-t border-dark-4">
+                  <div className="grid grid-cols-2 gap-3 text-center">
+                    <div className="p-2 bg-dark-4/30 rounded-lg">
+                      <p className="text-xs text-gray-5">Cheapest</p>
+                      <p className="text-sm font-bold text-green-400">
+                        {formatUSD(shippingOptions[0]?.price || 0)}
+                      </p>
+                    </div>
+                    <div className="p-2 bg-dark-4/30 rounded-lg">
+                      <p className="text-xs text-gray-5">Fastest</p>
+                      <p className="text-sm font-bold text-blue-400">
+                        {shippingOptions.reduce((fastest, opt) => 
+                          opt.minDays < fastest.minDays ? opt : fastest, 
+                          shippingOptions[0]
+                        )?.minDays || '?'} days
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Product Details Card */}
