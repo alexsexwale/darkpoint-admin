@@ -1,5 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
+import { cjDropshipping } from '@/lib/cjdropshipping';
+
+// Parse images from various CJ formats
+function parseImages(rawImages: unknown): string[] {
+  if (!rawImages) return [];
+  
+  if (Array.isArray(rawImages)) {
+    return rawImages.flatMap((img) => parseImages(img));
+  }
+  
+  if (typeof rawImages === 'string') {
+    const trimmed = rawImages.trim();
+    
+    // Check if it's a JSON stringified array
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) {
+          return parsed.filter((url): url is string => typeof url === 'string' && url.startsWith('http'));
+        }
+      } catch {
+        // Not valid JSON
+      }
+    }
+    
+    // Check if it's comma-separated URLs
+    if (trimmed.includes(',') && trimmed.includes('http')) {
+      return trimmed.split(',').map((url) => url.trim()).filter((url) => url.startsWith('http'));
+    }
+    
+    // Single URL
+    if (trimmed.startsWith('http')) {
+      return [trimmed];
+    }
+  }
+  
+  return [];
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -28,6 +66,64 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Product already imported' }, { status: 400 });
     }
 
+    // Fetch full product details from CJ to get all images
+    // The list endpoint might only return a single productImage
+    console.log(`Fetching full product details for ${cjProduct.id}...`);
+    const fullProductResult = await cjDropshipping.getProduct(cjProduct.id);
+    
+    let allImages: string[] = [];
+    const productName = cjProduct.name;
+    
+    if (fullProductResult.success && fullProductResult.data) {
+      const fullProduct = fullProductResult.data;
+      
+      // Collect images from the full product data
+      if (fullProduct.productImages) {
+        allImages = [...allImages, ...parseImages(fullProduct.productImages)];
+      }
+      if (fullProduct.productImage) {
+        allImages = [...allImages, ...parseImages(fullProduct.productImage)];
+      }
+      
+      // Also get variant images
+      if (fullProduct.variants && Array.isArray(fullProduct.variants)) {
+        for (const variant of fullProduct.variants) {
+          if (variant.variantImage) {
+            allImages = [...allImages, ...parseImages(variant.variantImage)];
+          }
+        }
+      }
+      
+      console.log(`Found ${allImages.length} images from CJ product detail API`);
+    } else {
+      // Fallback to images from search result if detail fetch fails
+      console.log('Could not fetch full product details, using search result images');
+      if (cjProduct.images && Array.isArray(cjProduct.images)) {
+        allImages = cjProduct.images.map((img: { src?: string } | string) => 
+          typeof img === 'string' ? img : img.src
+        ).filter(Boolean);
+      }
+    }
+    
+    // Deduplicate images
+    const uniqueImageUrls = [...new Set(allImages)].filter(url => {
+      try {
+        new URL(url);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+    
+    // Format images as array of { id, src, alt }
+    const images = uniqueImageUrls.map((src, index) => ({
+      id: `${cjProduct.id}-${index}`,
+      src,
+      alt: `${productName} - Image ${index + 1}`,
+    }));
+    
+    console.log(`Importing product with ${images.length} images`);
+
     // Use provided values or calculate with defaults
     const rate = exchangeRate || 18.5; // Default fallback rate
     const markupPercent = customMarkup || 150;
@@ -42,14 +138,17 @@ export async function POST(request: NextRequest) {
     // Sell price = Cost price × (1 + markup/100)
     const sellPrice = providedSellZAR || Math.ceil(basePrice * (1 + markupPercent / 100));
 
-    // Ensure all images are saved
-    const images = cjProduct.images || [];
-    console.log(`Importing product with ${images.length} images`);
+    // Generate slug matching darkpoint format: product-name-{fullProductId}
+    const slug = productName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') + '-' + cjProduct.id;
 
     // Build product data with all available fields
     const productData: Record<string, unknown> = {
       cj_product_id: cjProduct.id,
-      name: cjProduct.name,
+      name: productName,
+      slug: slug,
       description: cjProduct.description || cjProduct.shortDescription,
       short_description: cjProduct.shortDescription,
       base_price: basePrice, // Cost in ZAR
