@@ -392,44 +392,44 @@ export default function ProductDetailPage() {
             </h3>
             
             <div className="space-y-4">
-              {/* Price Flow */}
-              <div className="grid grid-cols-3 gap-4 text-center">
+              {/* Price Flow - Stacked on mobile, grid on larger screens */}
+              <div className="space-y-3 sm:space-y-0 sm:grid sm:grid-cols-3 sm:gap-3">
                 {product.original_price_usd && (
-                  <div className="p-3 bg-dark-4/50 rounded-lg">
-                    <p className="text-xl font-bold text-blue-400 font-mono">
+                  <div className="p-3 bg-dark-4/50 rounded-lg flex sm:flex-col items-center sm:items-center justify-between sm:justify-center sm:text-center">
+                    <p className="text-xs text-gray-5 sm:order-2 sm:mt-1">CJ Cost (USD)</p>
+                    <p className="text-lg sm:text-xl font-bold text-blue-400 font-mono sm:order-1">
                       {formatUSD(product.original_price_usd)}
                     </p>
-                    <p className="text-xs text-gray-5 mt-1">CJ Cost (USD)</p>
                   </div>
                 )}
-                <div className="p-3 bg-dark-4/50 rounded-lg">
-                  <p className="text-xl font-bold text-red-400 font-mono">
+                <div className="p-3 bg-dark-4/50 rounded-lg flex sm:flex-col items-center sm:items-center justify-between sm:justify-center sm:text-center">
+                  <p className="text-xs text-gray-5 sm:order-2 sm:mt-1">Your Cost (ZAR)</p>
+                  <p className="text-lg sm:text-xl font-bold text-red-400 font-mono sm:order-1">
                     {formatZAR(product.base_price)}
                   </p>
-                  <p className="text-xs text-gray-5 mt-1">Your Cost (ZAR)</p>
                 </div>
-                <div className="p-3 bg-dark-4/50 rounded-lg">
-                  <p className="text-xl font-bold text-green-400 font-mono">
+                <div className="p-3 bg-dark-4/50 rounded-lg flex sm:flex-col items-center sm:items-center justify-between sm:justify-center sm:text-center">
+                  <p className="text-xs text-gray-5 sm:order-2 sm:mt-1">Sell Price (ZAR)</p>
+                  <p className="text-lg sm:text-xl font-bold text-green-400 font-mono sm:order-1">
                     {formatZAR(product.sell_price)}
                   </p>
-                  <p className="text-xs text-gray-5 mt-1">Sell Price (ZAR)</p>
                 </div>
               </div>
 
               {/* Profit Summary */}
               <div className="pt-4 border-t border-dark-4">
-                <div className="flex justify-between items-center mb-2">
+                <div className="flex justify-between items-center mb-3">
                   <span className="text-sm text-gray-5">Profit per Sale</span>
-                  <span className="text-lg font-bold text-main-1">{formatZAR(profitZAR)}</span>
+                  <span className="text-base sm:text-lg font-bold text-main-1">{formatZAR(profitZAR)}</span>
                 </div>
-                <div className="flex justify-between items-center mb-2">
+                <div className="flex justify-between items-center mb-3">
                   <span className="text-sm text-gray-5">Markup</span>
-                  <span className="text-lg font-bold text-gray-1">{product.markup_percent}%</span>
+                  <span className="text-base sm:text-lg font-bold text-gray-1">{product.markup_percent}%</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-gray-5">Profit Margin</span>
                   <span className={clsx(
-                    'text-lg font-bold',
+                    'text-base sm:text-lg font-bold',
                     profitMargin >= 60 ? 'text-green-400' :
                     profitMargin >= 40 ? 'text-yellow-400' : 'text-red-400'
                   )}>
