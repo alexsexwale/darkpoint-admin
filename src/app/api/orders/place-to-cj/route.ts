@@ -2,6 +2,30 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
 import { cjDropshipping } from '@/lib/cjdropshipping';
 
+// Helper to create a notification
+async function createNotification(supabase: ReturnType<typeof createServerClient>, payload: {
+  type: 'order' | 'customer' | 'inventory' | 'system';
+  title: string;
+  message?: string;
+  icon?: string;
+  link?: string;
+  data?: Record<string, unknown>;
+}) {
+  try {
+    await supabase.from('admin_notifications').insert({
+      type: payload.type,
+      title: payload.title,
+      message: payload.message || null,
+      icon: payload.icon || 'HiOutlineShoppingCart',
+      link: payload.link || null,
+      data: payload.data || {},
+      is_read: false,
+    });
+  } catch (err) {
+    console.error('Failed to create notification:', err);
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { orderId } = await request.json();
@@ -153,6 +177,16 @@ export async function POST(request: NextRequest) {
         created_at: new Date().toISOString(),
       });
 
+      // Create failure notification
+      await createNotification(supabase, {
+        type: 'order',
+        title: 'CJ Order Failed',
+        message: `Order #${order.order_number} failed to place with CJ Dropshipping: ${cjResult.error}`,
+        icon: 'HiOutlineExclamation',
+        link: `/orders/${orderId}`,
+        data: { orderId, orderNumber: order.order_number, error: cjResult.error },
+      });
+
       return NextResponse.json({ success: false, error: cjResult.error }, { status: 500 });
     }
 
@@ -177,6 +211,21 @@ export async function POST(request: NextRequest) {
       .from('orders')
       .update({ status: 'processing', updated_at: new Date().toISOString() })
       .eq('id', orderId);
+
+    // Create success notification
+    await createNotification(supabase, {
+      type: 'order',
+      title: 'Order Placed to CJ',
+      message: `Order #${order.order_number} has been successfully placed with CJ Dropshipping`,
+      icon: 'HiOutlineCheckCircle',
+      link: `/orders/${orderId}`,
+      data: { 
+        orderId, 
+        orderNumber: order.order_number, 
+        cjOrderId: cjResult.data?.orderId,
+        amount: order.total_amount,
+      },
+    });
 
     return NextResponse.json({
       success: true,

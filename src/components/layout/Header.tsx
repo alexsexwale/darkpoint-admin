@@ -3,7 +3,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
-  HiOutlineBell,
   HiOutlineSearch,
   HiOutlineUser,
   HiOutlineLogout,
@@ -12,6 +11,7 @@ import {
   HiOutlineX,
 } from 'react-icons/hi';
 import { useAuthStore } from '@/stores/authStore';
+import { NotificationCenter } from '@/components/notifications';
 import clsx from 'clsx';
 
 interface HeaderProps {
@@ -133,10 +133,7 @@ export function Header({ onMenuClick }: HeaderProps) {
       {/* Right side */}
       <div className="flex items-center gap-2 md:gap-3">
         {/* Notifications */}
-        <button className="relative p-2.5 rounded-xl text-gray-5 hover:bg-dark-3 hover:text-gray-1 transition-all active:scale-95 group">
-          <HiOutlineBell className="w-5 h-5 group-hover:animate-[wiggle_0.3s_ease-in-out]" />
-          <span className="absolute top-2 right-2 w-2 h-2 bg-gradient-to-r from-main-5 to-red-500 rounded-full shadow-lg shadow-main-5/50" />
-        </button>
+        <NotificationCenter />
 
         {/* User dropdown */}
         <div className="relative" ref={dropdownRef}>
