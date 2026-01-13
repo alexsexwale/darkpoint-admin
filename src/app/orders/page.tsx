@@ -29,6 +29,7 @@ import {
   OrderStatusBadge,
   PaymentStatusBadge,
 } from '@/components/ui';
+import { Pagination } from '@/components/ui/Pagination';
 import { supabase } from '@/lib/supabase';
 import { format } from 'date-fns';
 import type { Order, OrderStatus } from '@/types';
@@ -62,7 +63,7 @@ export default function OrdersPage() {
   const [paymentFilter, setPaymentFilter] = useState(searchParams.get('payment') || '');
   const [totalCount, setTotalCount] = useState(0);
   const [page, setPage] = useState(1);
-  const pageSize = 20;
+  const [pageSize, setPageSize] = useState(25);
 
   const fetchOrders = useCallback(async () => {
     setIsLoading(true);
@@ -101,7 +102,7 @@ export default function OrdersPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [page, statusFilter, paymentFilter, searchQuery]);
+  }, [page, pageSize, statusFilter, paymentFilter, searchQuery]);
 
   useEffect(() => {
     fetchOrders();
@@ -316,34 +317,19 @@ export default function OrdersPage() {
         </Table>
 
         {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between px-6 py-4 border-t border-dark-4">
-            <p className="text-sm text-gray-5">
-              Showing {((page - 1) * pageSize) + 1} to {Math.min(page * pageSize, totalCount)} of {totalCount}
-            </p>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setPage(p => Math.max(1, p - 1))}
-                disabled={page === 1}
-              >
-                Previous
-              </Button>
-              <span className="text-sm text-gray-5 px-3">
-                Page {page} of {totalPages}
-              </span>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
-              >
-                Next
-              </Button>
-            </div>
-          </div>
-        )}
+        <div className="border-t border-dark-4">
+          <Pagination
+            currentPage={page}
+            totalPages={totalPages}
+            totalItems={totalCount}
+            itemsPerPage={pageSize}
+            onPageChange={(newPage) => setPage(newPage)}
+            onItemsPerPageChange={(newSize) => {
+              setPageSize(newSize);
+              setPage(1);
+            }}
+          />
+        </div>
       </Card>
     </div>
   );

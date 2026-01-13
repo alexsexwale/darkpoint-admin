@@ -19,6 +19,7 @@ import {
   Modal,
   ConfirmDialog,
 } from '@/components/ui';
+import { Pagination } from '@/components/ui/Pagination';
 import { supabase } from '@/lib/supabase';
 import { format } from 'date-fns';
 import type { UserCoupon, DiscountType, CouponSource } from '@/types';
@@ -54,7 +55,7 @@ export default function CouponsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
-  const pageSize = 20;
+  const [pageSize, setPageSize] = useState(25);
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -108,7 +109,7 @@ export default function CouponsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [page, sourceFilter, statusFilter, searchQuery]);
+  }, [page, pageSize, sourceFilter, statusFilter, searchQuery]);
 
   useEffect(() => {
     fetchCoupons();
@@ -392,29 +393,19 @@ export default function CouponsPage() {
       )}
 
       {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => setPage(p => Math.max(1, p - 1))}
-            disabled={page === 1}
-          >
-            Previous
-          </Button>
-          <span className="text-sm text-gray-5 px-4">
-            Page {page} of {totalPages}
-          </span>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-            disabled={page === totalPages}
-          >
-            Next
-          </Button>
-        </div>
-      )}
+      <Card padding="none">
+        <Pagination
+          currentPage={page}
+          totalPages={totalPages}
+          totalItems={totalCount}
+          itemsPerPage={pageSize}
+          onPageChange={(newPage) => setPage(newPage)}
+          onItemsPerPageChange={(newSize) => {
+            setPageSize(newSize);
+            setPage(1);
+          }}
+        />
+      </Card>
 
       {/* Create Coupon Modal */}
       <Modal

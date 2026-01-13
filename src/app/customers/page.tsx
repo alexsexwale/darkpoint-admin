@@ -27,6 +27,7 @@ import {
   Select,
   Badge,
 } from '@/components/ui';
+import { Pagination } from '@/components/ui/Pagination';
 import { supabase } from '@/lib/supabase';
 import { format } from 'date-fns';
 import type { Customer, Order } from '@/types';
@@ -43,6 +44,8 @@ export default function CustomersPage() {
   const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '');
   const [sortField, setSortField] = useState<SortField>('totalSpent');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
 
   const fetchCustomers = useCallback(async () => {
     setIsLoading(true);
@@ -118,8 +121,13 @@ export default function CustomersPage() {
     fetchCustomers();
   }, [fetchCustomers]);
 
+  // Reset page when search changes
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery]);
+
   // Filter and sort customers
-  const filteredCustomers = useMemo(() => {
+  const { filteredCustomers, totalFiltered, paginatedCustomers, totalPages } = useMemo(() => {
     let result = [...customers];
 
     // Apply search filter
@@ -153,8 +161,13 @@ export default function CustomersPage() {
       return sortOrder === 'desc' ? -comparison : comparison;
     });
 
-    return result;
-  }, [customers, searchQuery, sortField, sortOrder]);
+    const totalFiltered = result.length;
+    const totalPages = Math.ceil(totalFiltered / pageSize);
+    const startIndex = (page - 1) * pageSize;
+    const paginatedCustomers = result.slice(startIndex, startIndex + pageSize);
+
+    return { filteredCustomers: result, totalFiltered, paginatedCustomers, totalPages };
+  }, [customers, searchQuery, sortField, sortOrder, page, pageSize]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-ZA', {
@@ -317,7 +330,7 @@ export default function CustomersPage() {
             <div key={i} className="h-24 bg-dark-2 border border-dark-4 rounded-lg animate-pulse" />
           ))}
         </div>
-      ) : filteredCustomers.length === 0 ? (
+      ) : totalFiltered === 0 ? (
         <Card className="p-12 text-center">
           <HiOutlineUserCircle className="w-16 h-16 text-gray-5 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-1 mb-2">
@@ -331,7 +344,7 @@ export default function CustomersPage() {
         </Card>
       ) : (
         <div className="space-y-3">
-          {filteredCustomers.map((customer) => (
+          {paginatedCustomers.map((customer) => (
             <Link 
               key={customer.email} 
               href={`/customers/${encodeURIComponent(customer.email)}`}
@@ -404,6 +417,21 @@ export default function CustomersPage() {
               </Card>
             </Link>
           ))}
+
+          {/* Pagination */}
+          <Card padding="none" className="mt-4">
+            <Pagination
+              currentPage={page}
+              totalPages={totalPages}
+              totalItems={totalFiltered}
+              itemsPerPage={pageSize}
+              onPageChange={(newPage) => setPage(newPage)}
+              onItemsPerPageChange={(newSize) => {
+                setPageSize(newSize);
+                setPage(1);
+              }}
+            />
+          </Card>
         </div>
       )}
     </div>
