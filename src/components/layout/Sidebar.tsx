@@ -51,7 +51,7 @@ export function Sidebar({ isOpen, onClose, collapsed, onToggleCollapse }: Sideba
       {/* Mobile overlay */}
       {isOpen && (
         <div 
-          className="fixed inset-0 bg-black/60 z-40 lg:hidden"
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden"
           onClick={onClose}
         />
       )}
@@ -59,42 +59,40 @@ export function Sidebar({ isOpen, onClose, collapsed, onToggleCollapse }: Sideba
       {/* Sidebar */}
       <aside
         className={clsx(
-          'fixed left-0 top-0 z-50 h-screen bg-dark-2 border-r border-dark-4 transition-all duration-300 flex flex-col',
+          'fixed left-0 top-0 z-50 h-screen bg-dark-2/95 backdrop-blur-xl border-r border-dark-4/50 transition-all duration-300 flex flex-col',
           // Mobile: slide in/out
           'lg:translate-x-0',
           isOpen ? 'translate-x-0' : '-translate-x-full',
           // Desktop: collapsed or expanded
-          collapsed ? 'lg:w-[72px]' : 'lg:w-[260px]',
+          collapsed ? 'lg:w-[72px]' : 'lg:w-[280px]',
           // Mobile: always full width when open
-          'w-[280px]'
+          'w-[300px]'
         )}
       >
         {/* Logo */}
         <div className={clsx(
-          'h-16 flex items-center border-b border-dark-4 px-4',
-          collapsed && !isOpen ? 'lg:justify-center' : 'justify-between'
+          'h-16 flex items-center justify-center border-b border-dark-4/50 relative',
+          collapsed && !isOpen ? 'lg:px-2' : 'px-4'
         )}>
           {(!collapsed || isOpen) && (
-            <Link href="/" className="flex items-center gap-3" onClick={onClose}>
-              <div className="w-8 h-8 rounded bg-gradient-to-br from-main-1 to-amber-600 flex items-center justify-center">
-                <span className="text-white font-bold text-sm">D</span>
-              </div>
-              <div>
-                <h1 className="font-heading text-lg text-gray-1 tracking-wider">DARKPOINT</h1>
-                <p className="text-[10px] text-gray-5 -mt-1 uppercase tracking-widest">Admin</p>
-              </div>
+            <Link href="/" className="group relative z-10 flex items-center justify-center" onClick={onClose}>
+              <h1 className="font-heading text-2xl text-transparent bg-clip-text bg-gradient-to-r from-main-1 via-orange-400 to-amber-400 tracking-[0.2em] hover:from-amber-400 hover:via-orange-400 hover:to-main-1 transition-all leading-none pt-0.5">
+                DARKPOINT
+              </h1>
             </Link>
           )}
+          
+          {/* Collapsed logo */}
           {collapsed && !isOpen && (
-            <div className="hidden lg:flex w-8 h-8 rounded bg-gradient-to-br from-main-1 to-amber-600 items-center justify-center">
-              <span className="text-white font-bold text-sm">D</span>
-            </div>
+            <Link href="/" className="hidden lg:block group">
+              <span className="font-heading text-xl text-transparent bg-clip-text bg-gradient-to-r from-main-1 to-amber-400">D</span>
+            </Link>
           )}
           
           {/* Mobile close button */}
           <button
             onClick={onClose}
-            className="lg:hidden p-2 rounded-lg text-gray-5 hover:bg-dark-3 hover:text-gray-1 transition-colors"
+            className="lg:hidden absolute right-3 p-2 rounded-lg text-gray-5 hover:bg-dark-3 hover:text-gray-1 transition-colors"
           >
             <HiOutlineX className="w-5 h-5" />
           </button>
@@ -113,14 +111,17 @@ export function Sidebar({ isOpen, onClose, collapsed, onToggleCollapse }: Sideba
                     href={item.href}
                     onClick={onClose}
                     className={clsx(
-                      'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group',
+                      'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group relative',
                       isActive
-                        ? 'bg-main-1/20 text-main-1 border border-main-1/30'
+                        ? 'bg-gradient-to-r from-main-1/20 to-amber-500/10 text-main-1 border border-main-1/30'
                         : 'text-gray-5 hover:bg-dark-3 hover:text-gray-1',
                       collapsed && !isOpen && 'lg:justify-center lg:px-0'
                     )}
                     title={collapsed && !isOpen ? item.name : undefined}
                   >
+                    {isActive && (
+                      <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-gradient-to-b from-main-1 to-amber-500 rounded-r-full" />
+                    )}
                     <item.icon className={clsx(
                       'w-5 h-5 flex-shrink-0 transition-colors',
                       isActive ? 'text-main-1' : 'group-hover:text-main-1'
@@ -146,7 +147,7 @@ export function Sidebar({ isOpen, onClose, collapsed, onToggleCollapse }: Sideba
         </nav>
 
         {/* Footer */}
-        <div className="border-t border-dark-4 p-3">
+        <div className="border-t border-dark-4/50 p-3">
           {/* View Store Link */}
           <a
             href={process.env.NEXT_PUBLIC_MAIN_SITE_URL || 'http://localhost:3000'}

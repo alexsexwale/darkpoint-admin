@@ -75,7 +75,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
       />
       <div 
         className={`transition-all duration-300 ${
-          sidebarCollapsed ? 'lg:ml-[72px]' : 'lg:ml-[260px]'
+          sidebarCollapsed ? 'lg:ml-[72px]' : 'lg:ml-[280px]'
         }`}
       >
         <Header onMenuClick={() => setSidebarOpen(true)} />
