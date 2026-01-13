@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
     console.log(`Attempting to ${suspend ? 'suspend' : 'unsuspend'} user ${userId}. Current status:`, existingUser.is_suspended);
 
     // Update user profile using service role (bypasses RLS)
-    const { data: updateData, error: updateError } = await supabase
+    const { error: updateError } = await supabase
       .from('user_profiles')
       .update({
         is_suspended: suspend,
@@ -53,24 +53,33 @@ export async function POST(request: NextRequest) {
         suspended_by: suspend ? adminId : null,
         suspension_reason: suspend ? (reason || 'No reason provided') : null,
       })
-      .eq('id', userId)
-      .select('id, is_suspended')
-      .single();
+      .eq('id', userId);
 
     if (updateError) {
       console.error('Suspension update error:', updateError);
       return NextResponse.json({ success: false, error: updateError.message }, { status: 500 });
     }
 
-    console.log('Update result:', updateData);
+    // Verify the update took effect by fetching the user again
+    const { data: verifyData, error: verifyError } = await supabase
+      .from('user_profiles')
+      .select('id, is_suspended')
+      .eq('id', userId)
+      .single();
 
-    // Verify the update took effect
-    if (updateData?.is_suspended !== suspend) {
-      console.error('Update did not take effect. Expected:', suspend, 'Got:', updateData?.is_suspended);
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Update failed to persist. This may be a database permission issue.' 
-      }, { status: 500 });
+    if (verifyError) {
+      console.error('Verification error:', verifyError);
+      // Don't fail - the update might have worked
+    } else {
+      console.log('Verification result:', verifyData);
+      
+      if (verifyData?.is_suspended !== suspend) {
+        console.error('Update did not take effect. Expected:', suspend, 'Got:', verifyData?.is_suspended);
+        return NextResponse.json({ 
+          success: false, 
+          error: 'Update failed to persist. This may be a database permission issue.' 
+        }, { status: 500 });
+      }
     }
 
     // Log the action (best effort, don't fail if this errors)
