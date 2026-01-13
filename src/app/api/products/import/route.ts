@@ -42,7 +42,11 @@ export async function POST(request: NextRequest) {
     // Sell price = Cost price × (1 + markup/100)
     const sellPrice = providedSellZAR || Math.ceil(basePrice * (1 + markupPercent / 100));
 
-    // Build product data with ZAR prices
+    // Ensure all images are saved
+    const images = cjProduct.images || [];
+    console.log(`Importing product with ${images.length} images`);
+
+    // Build product data with all available fields
     const productData: Record<string, unknown> = {
       cj_product_id: cjProduct.id,
       name: cjProduct.name,
@@ -50,25 +54,34 @@ export async function POST(request: NextRequest) {
       short_description: cjProduct.shortDescription,
       base_price: basePrice, // Cost in ZAR
       sell_price: sellPrice, // Selling price in ZAR
-      compare_at_price: cjProduct.compareAtPrice ? Math.ceil(cjProduct.compareAtPrice * rate * 1.5) : null,
+      compare_at_price: cjProduct.sourcePrice ? Math.ceil(cjProduct.sourcePrice * rate * 1.5) : null,
       markup_percent: markupPercent,
       category: cjProduct.category || mapCategory(cjProduct.name),
-      tags: cjProduct.tags || [],
-      images: cjProduct.images || [],
+      tags: cjProduct.tags || extractTags(cjProduct.name, cjProduct.description || ''),
+      images: images,
       variants: cjProduct.variants || [],
       weight: cjProduct.weight || 0,
       source_from: cjProduct.sourceFrom || 'China',
       is_active: true,
       is_featured: false,
       last_synced_at: new Date().toISOString(),
+      
+      // Additional detailed information
+      sell_point: cjProduct.sellPoint || null,
+      raw_description: cjProduct.rawDescription || cjProduct.description || null,
+      package_contents: cjProduct.packageContents || null,
+      specifications: cjProduct.specifications || {},
+      features: cjProduct.features || [],
+      remark: cjProduct.remark || null,
+      package_weight: cjProduct.packageWeight || 0,
+      product_sku: cjProduct.productSku || null,
+      
+      // USD tracking fields
+      original_price_usd: basePriceUSD,
+      exchange_rate_used: rate,
     };
 
-    // Add optional USD tracking fields (may not exist in older schemas)
-    // These will be silently ignored if columns don't exist
-    productData.original_price_usd = basePriceUSD;
-    productData.exchange_rate_used = rate;
-
-    // Insert product with ZAR prices
+    // Insert product with all data
     const { data: product, error } = await supabase
       .from('admin_products')
       .insert(productData)
@@ -87,6 +100,37 @@ export async function POST(request: NextRequest) {
         }, { status: 403 });
       }
       
+      // If column doesn't exist, try without the new columns
+      if (error.message?.includes('column') && error.message?.includes('does not exist')) {
+        console.log('Trying import without new columns...');
+        
+        // Remove potentially missing columns
+        delete productData.sell_point;
+        delete productData.raw_description;
+        delete productData.package_contents;
+        delete productData.specifications;
+        delete productData.features;
+        delete productData.remark;
+        delete productData.package_weight;
+        delete productData.product_sku;
+        
+        const { data: fallbackProduct, error: fallbackError } = await supabase
+          .from('admin_products')
+          .insert(productData)
+          .select()
+          .single();
+          
+        if (fallbackError) {
+          return NextResponse.json({ success: false, error: fallbackError.message }, { status: 500 });
+        }
+        
+        return NextResponse.json({ 
+          success: true, 
+          data: fallbackProduct,
+          warning: 'Imported without detailed fields. Run migration 057 to enable full data storage.'
+        });
+      }
+      
       return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }
 
@@ -98,6 +142,26 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+// Extract tags from product name and description
+function extractTags(name: string, description: string): string[] {
+  const tags: string[] = [];
+  const text = `${name} ${description}`.toLowerCase();
+  
+  const tagKeywords = [
+    'gaming', 'rgb', 'wireless', 'bluetooth', 'usb', 'led', 'portable',
+    'mini', 'pro', 'smart', 'mechanical', 'ergonomic', 'adjustable',
+    'waterproof', 'rechargeable', 'foldable', 'lightweight'
+  ];
+  
+  for (const keyword of tagKeywords) {
+    if (text.includes(keyword) && !tags.includes(keyword)) {
+      tags.push(keyword);
+    }
+  }
+  
+  return tags.slice(0, 10);
 }
 
 // Simple category mapping based on product name

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { 
   HiOutlineSearch,
   HiOutlineRefresh,
@@ -49,6 +50,7 @@ const STATUS_OPTIONS: Array<{ value: string; label: string }> = [
 ];
 
 const MARKUP_PRESETS = [
+  { label: '50%', value: 50, description: '1.5x cost' },
   { label: '100%', value: 100, description: '2x cost' },
   { label: '150%', value: 150, description: '2.5x cost' },
   { label: '200%', value: 200, description: '3x cost' },
@@ -57,6 +59,7 @@ const MARKUP_PRESETS = [
 ];
 
 export default function ProductsPage() {
+  const router = useRouter();
   const [products, setProducts] = useState<AdminProduct[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -77,6 +80,9 @@ export default function ProductsPage() {
   const [cjProducts, setCJProducts] = useState<any[]>([]);
   const [isSearchingCJ, setIsSearchingCJ] = useState(false);
   const [importingProductId, setImportingProductId] = useState<string | null>(null);
+  
+  // Per-product pricing overrides: { productId: { markup?: number, customPrice?: number } }
+  const [productPricing, setProductPricing] = useState<Record<string, { markup?: number; customPrice?: number }>>({});
   
   // Exchange rate states
   const [exchangeRate, setExchangeRate] = useState<number>(18.5);
@@ -171,12 +177,13 @@ export default function ProductsPage() {
     }
   };
 
-  const importCJProduct = async (cjProduct: any, customMarkup?: number) => {
+  const importCJProduct = async (cjProduct: any) => {
     setImportingProductId(cjProduct.id);
     try {
-      const markup = customMarkup || defaultMarkup;
-      const costZAR = cjProduct.basePrice * exchangeRate;
-      const sellZAR = costZAR * (1 + markup / 100);
+      const pricing = calculatePricing(cjProduct.basePrice, cjProduct.id);
+      const costZAR = pricing.costZAR;
+      const sellZAR = pricing.sellZAR;
+      const markup = pricing.effectiveMarkup;
       
       const response = await fetch('/api/products/import', {
         method: 'POST',
@@ -184,7 +191,7 @@ export default function ProductsPage() {
         body: JSON.stringify({ 
           cjProduct,
           exchangeRate,
-          markupPercent: markup,
+          markupPercent: Math.round(markup),
           costZAR,
           sellZAR,
         }),
@@ -193,8 +200,13 @@ export default function ProductsPage() {
       const result = await response.json();
       
       if (result.success) {
-        // Remove the imported product from the list
+        // Remove the imported product from the list and clear its pricing override
         setCJProducts(prev => prev.filter(p => p.id !== cjProduct.id));
+        setProductPricing(prev => {
+          const next = { ...prev };
+          delete next[cjProduct.id];
+          return next;
+        });
         await fetchProducts();
         // Don't close modal - allow importing more products
       } else {
@@ -266,14 +278,52 @@ export default function ProductsPage() {
 
   const totalPages = Math.ceil(totalCount / pageSize);
 
-  // Calculate pricing for a product
-  const calculatePricing = (usdCost: number, markup: number = defaultMarkup) => {
+  // Calculate pricing for a product with optional overrides
+  const calculatePricing = (usdCost: number, productId: string) => {
     const costZAR = usdCost * exchangeRate;
-    const sellZAR = costZAR * (1 + markup / 100);
-    const profitZAR = sellZAR - costZAR;
-    const profitMargin = (profitZAR / sellZAR) * 100;
+    const override = productPricing[productId];
     
-    return { costZAR, sellZAR, profitZAR, profitMargin };
+    let sellZAR: number;
+    let effectiveMarkup: number;
+    
+    if (override?.customPrice !== undefined && override.customPrice > 0) {
+      // Custom price takes precedence
+      sellZAR = override.customPrice;
+      effectiveMarkup = costZAR > 0 ? ((sellZAR / costZAR) - 1) * 100 : 0;
+    } else {
+      // Use markup (either product-specific or default)
+      effectiveMarkup = override?.markup ?? defaultMarkup;
+      sellZAR = costZAR * (1 + effectiveMarkup / 100);
+    }
+    
+    const profitZAR = sellZAR - costZAR;
+    const profitMargin = sellZAR > 0 ? (profitZAR / sellZAR) * 100 : 0;
+    
+    return { costZAR, sellZAR, profitZAR, profitMargin, effectiveMarkup };
+  };
+  
+  // Update product pricing override
+  const updateProductPricing = (productId: string, field: 'markup' | 'customPrice', value: number | undefined) => {
+    setProductPricing(prev => ({
+      ...prev,
+      [productId]: {
+        ...prev[productId],
+        [field]: value,
+        // Clear the other field when one is set
+        ...(field === 'customPrice' ? { markup: undefined } : {}),
+        ...(field === 'markup' ? { customPrice: undefined } : {}),
+      },
+    }));
+  };
+  
+  // Get the effective markup for a product
+  const getProductMarkup = (productId: string) => {
+    return productPricing[productId]?.markup ?? defaultMarkup;
+  };
+  
+  // Check if a product has a custom price set
+  const hasCustomPrice = (productId: string) => {
+    return productPricing[productId]?.customPrice !== undefined && productPricing[productId]?.customPrice! > 0;
   };
 
   return (
@@ -382,21 +432,30 @@ export default function ProductsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {products.map((product) => (
             <Card key={product.id} padding="none" className="overflow-hidden group">
-              {/* Image */}
-              <div className="relative aspect-square bg-dark-3">
+              {/* Clickable Image Area */}
+              <div 
+                className="relative aspect-square bg-dark-3 cursor-pointer"
+                onClick={() => router.push(`/products/${product.id}`)}
+              >
                 {product.images && product.images[0] ? (
                   <img 
                     src={product.images[0].src}
                     alt={product.name}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover transition-transform group-hover:scale-105"
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-gray-5">
                     No Image
                   </div>
                 )}
+                {/* View Details Overlay */}
+                <div className="absolute inset-0 bg-dark-2/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                  <span className="px-4 py-2 bg-main-1 rounded-lg text-sm font-medium text-white">
+                    View Details
+                  </span>
+                </div>
                 {/* Badges */}
-                <div className="absolute top-2 left-2 flex gap-2">
+                <div className="absolute top-2 left-2 flex gap-2 z-10">
                   {product.is_featured && (
                     <Badge variant="primary">Featured</Badge>
                   )}
@@ -405,9 +464,12 @@ export default function ProductsPage() {
                   )}
                 </div>
                 {/* Quick Actions */}
-                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-2">
+                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-2 z-10">
                   <button
-                    onClick={() => toggleProductStatus(product, 'is_active')}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleProductStatus(product, 'is_active');
+                    }}
                     className="p-2 bg-dark-2/90 rounded-lg hover:bg-dark-3 transition-colors"
                     title={product.is_active ? 'Deactivate' : 'Activate'}
                   >
@@ -418,14 +480,18 @@ export default function ProductsPage() {
                     )}
                   </button>
                   <button
-                    onClick={() => toggleProductStatus(product, 'is_featured')}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleProductStatus(product, 'is_featured');
+                    }}
                     className="p-2 bg-dark-2/90 rounded-lg hover:bg-dark-3 transition-colors"
                     title={product.is_featured ? 'Remove Featured' : 'Set Featured'}
                   >
                     <HiOutlineStar className={`w-4 h-4 ${product.is_featured ? 'text-main-1 fill-main-1' : 'text-gray-5'}`} />
                   </button>
                   <button
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation();
                       setSelectedProduct(product);
                       setShowDeleteConfirm(true);
                     }}
@@ -437,8 +503,11 @@ export default function ProductsPage() {
                 </div>
               </div>
               
-              {/* Content */}
-              <div className="p-4">
+              {/* Content - Also Clickable */}
+              <div 
+                className="p-4 cursor-pointer hover:bg-dark-3/50 transition-colors"
+                onClick={() => router.push(`/products/${product.id}`)}
+              >
                 <p className="text-xs text-gray-5 uppercase mb-1">{product.category}</p>
                 <h3 className="font-medium text-gray-1 line-clamp-2 mb-2 min-h-[2.5rem]">
                   {product.name}
@@ -535,7 +604,7 @@ export default function ProductsPage() {
                     <button
                       key={preset.value}
                       onClick={() => setDefaultMarkup(preset.value)}
-                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                      className={`px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                         defaultMarkup === preset.value
                           ? 'bg-green-500 text-white'
                           : 'bg-dark-3 text-gray-5 hover:bg-dark-4 hover:text-gray-1'
@@ -545,6 +614,20 @@ export default function ProductsPage() {
                       {preset.label}
                     </button>
                   ))}
+                  <input
+                    type="number"
+                    min="0"
+                    max="1000"
+                    value={MARKUP_PRESETS.some(p => p.value === defaultMarkup) ? '' : defaultMarkup}
+                    placeholder="Custom"
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value);
+                      if (!isNaN(val) && val >= 0) {
+                        setDefaultMarkup(val);
+                      }
+                    }}
+                    className="w-20 px-2 py-1.5 bg-dark-3 border border-dark-4 rounded-lg text-xs text-gray-1 focus:outline-none focus:border-green-500/50 placeholder:text-gray-5"
+                  />
                 </div>
               </div>
             </div>
@@ -580,7 +663,9 @@ export default function ProductsPage() {
             <div className="max-h-[55vh] overflow-y-auto pr-2">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {cjProducts.map((product) => {
-                  const pricing = calculatePricing(product.basePrice);
+                  const pricing = calculatePricing(product.basePrice, product.id);
+                  const hasCustom = hasCustomPrice(product.id);
+                  const currentMarkup = getProductMarkup(product.id);
                   
                   return (
                     <div 
@@ -589,7 +674,7 @@ export default function ProductsPage() {
                     >
                       <div className="flex gap-4">
                         {/* Product Image */}
-                        <div className="w-24 h-24 bg-dark-4 rounded-lg overflow-hidden flex-shrink-0">
+                        <div className="w-20 h-20 bg-dark-4 rounded-lg overflow-hidden flex-shrink-0 relative">
                           {product.images?.[0] ? (
                             <img 
                               src={product.images[0].src}
@@ -601,89 +686,165 @@ export default function ProductsPage() {
                               No image
                             </div>
                           )}
+                          {/* Image count badge */}
+                          {product.images && product.images.length > 1 && (
+                            <div className="absolute bottom-1 right-1 bg-dark-2/90 px-1.5 py-0.5 rounded text-[10px] text-gray-1 font-medium">
+                              +{product.images.length - 1}
+                            </div>
+                          )}
                         </div>
                         
                         {/* Product Info */}
                         <div className="flex-1 min-w-0">
-                          <h4 className="text-sm font-medium text-gray-1 line-clamp-2 mb-2">
+                          <h4 className="text-sm font-medium text-gray-1 line-clamp-2 mb-1">
                             {product.name}
                           </h4>
-                          
-                          {/* Description */}
-                          {product.shortDescription && (
-                            <p className="text-xs text-gray-5 line-clamp-2 mb-3">
-                              {product.shortDescription}
-                            </p>
-                          )}
+                          <div className="flex items-center gap-3 text-xs">
+                            <span className="text-blue-400 font-mono">{formatUSD(product.basePrice)}</span>
+                            <span className="text-gray-5">→</span>
+                            <span className="text-red-400 font-mono">{formatZAR(pricing.costZAR)}</span>
+                          </div>
+                          {/* Additional info badges */}
+                          <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                            {product.images && (
+                              <span className="text-[10px] px-1.5 py-0.5 bg-blue-500/20 text-blue-400 rounded">
+                                {product.images.length} img{product.images.length !== 1 ? 's' : ''}
+                              </span>
+                            )}
+                            {product.variants && product.variants.length > 0 && (
+                              <span className="text-[10px] px-1.5 py-0.5 bg-purple-500/20 text-purple-400 rounded">
+                                {product.variants.length} variant{product.variants.length !== 1 ? 's' : ''}
+                              </span>
+                            )}
+                            {product.features && product.features.length > 0 && (
+                              <span className="text-[10px] px-1.5 py-0.5 bg-green-500/20 text-green-400 rounded">
+                                {product.features.length} feature{product.features.length !== 1 ? 's' : ''}
+                              </span>
+                            )}
+                            {product.specifications && Object.keys(product.specifications).length > 0 && (
+                              <span className="text-[10px] px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 rounded">
+                                {Object.keys(product.specifications).length} spec{Object.keys(product.specifications).length !== 1 ? 's' : ''}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                       
-                      {/* Pricing Breakdown */}
-                      <div className="mt-4 p-3 bg-dark-4/50 rounded-lg">
-                        <div className="grid grid-cols-2 gap-3 text-sm">
-                          {/* CJ Cost in USD */}
-                          <div className="flex justify-between items-center">
-                            <span className="text-gray-5">CJ Cost (USD):</span>
-                            <span className="font-mono text-blue-400 font-medium">
-                              {formatUSD(product.basePrice)}
-                            </span>
+                      {/* Pricing Controls */}
+                      <div className="mt-3 p-3 bg-dark-4/50 rounded-lg space-y-3">
+                        {/* Markup Controls */}
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <label className="text-xs text-gray-5">Markup %</label>
+                            <div className="flex items-center gap-1">
+                              {MARKUP_PRESETS.slice(0, 4).map((preset) => (
+                                <button
+                                  key={preset.value}
+                                  onClick={() => updateProductPricing(product.id, 'markup', preset.value)}
+                                  className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                                    !hasCustom && currentMarkup === preset.value
+                                      ? 'bg-green-500 text-white'
+                                      : 'bg-dark-3 text-gray-5 hover:bg-dark-4 hover:text-gray-1'
+                                  }`}
+                                >
+                                  {preset.label}
+                                </button>
+                              ))}
+                            </div>
                           </div>
-                          
-                          {/* Cost in ZAR */}
-                          <div className="flex justify-between items-center">
-                            <span className="text-gray-5">Cost (ZAR):</span>
-                            <span className="font-mono text-red-400 font-medium">
-                              {formatZAR(pricing.costZAR)}
-                            </span>
-                          </div>
-                          
-                          {/* Selling Price */}
-                          <div className="flex justify-between items-center">
-                            <span className="text-gray-5">Sell Price:</span>
-                            <span className="font-mono text-green-400 font-medium">
-                              {formatZAR(pricing.sellZAR)}
-                            </span>
-                          </div>
-                          
-                          {/* Profit */}
-                          <div className="flex justify-between items-center">
-                            <span className="text-gray-5">Profit:</span>
-                            <span className="font-mono text-main-1 font-medium">
-                              {formatZAR(pricing.profitZAR)}
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min="0"
+                              max="1000"
+                              placeholder="Custom %"
+                              value={hasCustom ? '' : (productPricing[product.id]?.markup ?? '')}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                if (val === '') {
+                                  updateProductPricing(product.id, 'markup', undefined);
+                                } else {
+                                  const num = Math.max(0, parseInt(val) || 0);
+                                  updateProductPricing(product.id, 'markup', num);
+                                }
+                              }}
+                              className="flex-1 px-3 py-1.5 bg-dark-3 border border-dark-4 rounded-lg text-sm text-gray-1 focus:outline-none focus:border-main-1/50 placeholder:text-gray-5"
+                            />
+                            <span className="text-xs text-gray-5 w-20">
+                              = {formatZAR(pricing.costZAR * (1 + (productPricing[product.id]?.markup ?? defaultMarkup) / 100))}
                             </span>
                           </div>
                         </div>
                         
-                        {/* Profit Margin Bar */}
-                        <div className="mt-3 pt-3 border-t border-dark-4">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-xs text-gray-5 flex items-center gap-1">
-                              <HiOutlineTrendingUp className="w-3 h-3" />
-                              Profit Margin
-                            </span>
-                            <span className={`text-sm font-bold ${
+                        {/* Or Custom Price */}
+                        <div className="relative">
+                          <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 border-t border-dark-4" />
+                          <span className="relative bg-dark-4/50 px-2 text-xs text-gray-5 left-1/2 -translate-x-1/2 inline-block">
+                            OR set price directly
+                          </span>
+                        </div>
+                        
+                        <div>
+                          <label className="text-xs text-gray-5 mb-1 block">Custom Sell Price (ZAR)</label>
+                          <div className="flex items-center gap-2">
+                            <span className="text-gray-5">R</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="1"
+                              placeholder={`e.g. ${Math.round(pricing.costZAR * 2)}`}
+                              value={productPricing[product.id]?.customPrice ?? ''}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                if (val === '') {
+                                  updateProductPricing(product.id, 'customPrice', undefined);
+                                } else {
+                                  const num = Math.max(0, parseFloat(val) || 0);
+                                  updateProductPricing(product.id, 'customPrice', num);
+                                }
+                              }}
+                              className={`flex-1 px-3 py-1.5 border rounded-lg text-sm text-gray-1 focus:outline-none placeholder:text-gray-5 ${
+                                hasCustom 
+                                  ? 'bg-green-500/10 border-green-500/30 focus:border-green-500/50' 
+                                  : 'bg-dark-3 border-dark-4 focus:border-main-1/50'
+                              }`}
+                            />
+                            {hasCustom && (
+                              <button
+                                onClick={() => updateProductPricing(product.id, 'customPrice', undefined)}
+                                className="text-xs text-gray-5 hover:text-red-400"
+                              >
+                                Clear
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        
+                        {/* Summary */}
+                        <div className="pt-2 border-t border-dark-4 grid grid-cols-3 gap-2 text-center">
+                          <div>
+                            <p className="text-lg font-bold text-green-400">{formatZAR(pricing.sellZAR)}</p>
+                            <p className="text-[10px] text-gray-5">Sell Price</p>
+                          </div>
+                          <div>
+                            <p className="text-lg font-bold text-main-1">{formatZAR(pricing.profitZAR)}</p>
+                            <p className="text-[10px] text-gray-5">Profit</p>
+                          </div>
+                          <div>
+                            <p className={`text-lg font-bold ${
                               pricing.profitMargin >= 60 ? 'text-green-400' :
                               pricing.profitMargin >= 40 ? 'text-yellow-400' :
-                              'text-red-400'
+                              pricing.profitMargin < 0 ? 'text-red-500' : 'text-red-400'
                             }`}>
-                              {pricing.profitMargin.toFixed(1)}%
-                            </span>
-                          </div>
-                          <div className="h-2 bg-dark-4 rounded-full overflow-hidden">
-                            <div 
-                              className={`h-full rounded-full transition-all ${
-                                pricing.profitMargin >= 60 ? 'bg-gradient-to-r from-green-500 to-emerald-400' :
-                                pricing.profitMargin >= 40 ? 'bg-gradient-to-r from-yellow-500 to-amber-400' :
-                                'bg-gradient-to-r from-red-500 to-orange-400'
-                              }`}
-                              style={{ width: `${Math.min(pricing.profitMargin, 100)}%` }}
-                            />
+                              {pricing.profitMargin.toFixed(0)}%
+                            </p>
+                            <p className="text-[10px] text-gray-5">Margin</p>
                           </div>
                         </div>
                       </div>
                       
                       {/* Actions */}
-                      <div className="flex items-center justify-between mt-4 pt-3 border-t border-dark-4">
+                      <div className="flex items-center justify-between mt-3">
                         <a
                           href={`https://www.cjdropshipping.com/product/${product.slug || product.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-p-${product.id}.html`}
                           target="_blank"
@@ -696,11 +857,11 @@ export default function ProductsPage() {
                         <Button 
                           size="sm" 
                           onClick={() => importCJProduct(product)}
-                          disabled={importingProductId !== null}
+                          disabled={importingProductId !== null || pricing.sellZAR <= 0}
                           isLoading={importingProductId === product.id}
                           leftIcon={importingProductId !== product.id ? <HiOutlineCloudDownload className="w-4 h-4" /> : undefined}
                         >
-                          {importingProductId === product.id ? 'Importing...' : `Import @ ${defaultMarkup}%`}
+                          {importingProductId === product.id ? 'Importing...' : `Import @ ${formatZAR(pricing.sellZAR)}`}
                         </Button>
                       </div>
                     </div>
