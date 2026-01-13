@@ -93,6 +93,11 @@ export interface UserProfile {
   store_credit: number;
   created_at: string;
   updated_at: string;
+  // Suspension fields
+  is_suspended?: boolean;
+  suspended_at?: string | null;
+  suspended_by?: string | null;
+  suspension_reason?: string | null;
 }
 
 // Achievement types

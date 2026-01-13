@@ -10,6 +10,7 @@ import {
   HiOutlineStar,
   HiOutlineTrash,
   HiOutlineCloudDownload,
+  HiOutlineExternalLink,
 } from 'react-icons/hi';
 import { 
   Card, 
@@ -422,7 +423,7 @@ export default function ProductsPage() {
           setCJSearchQuery('');
         }}
         title="Add Product from CJ Dropshipping"
-        size="xl"
+        size="3xl"
       >
         <div className="space-y-6">
           {/* Search CJ */}
@@ -442,40 +443,82 @@ export default function ProductsPage() {
 
           {/* CJ Products Results */}
           {cjProducts.length > 0 && (
-            <div className="max-h-96 overflow-y-auto">
-              <div className="grid grid-cols-2 gap-4">
+            <div className="max-h-[60vh] overflow-y-auto pr-2">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {cjProducts.map((product) => (
                   <div 
                     key={product.id}
-                    className="flex gap-3 p-3 bg-dark-3 rounded-lg hover:bg-dark-4 transition-colors"
+                    className="p-4 bg-dark-3 rounded-lg border border-dark-4 hover:border-main-1/30 transition-colors"
                   >
-                    <div className="w-16 h-16 bg-dark-4 rounded overflow-hidden flex-shrink-0">
-                      {product.images?.[0] ? (
-                        <img 
-                          src={product.images[0].src}
-                          alt={product.name}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-gray-5 text-xs">
-                          No image
+                    <div className="flex gap-4">
+                      {/* Product Image */}
+                      <div className="w-24 h-24 bg-dark-4 rounded-lg overflow-hidden flex-shrink-0">
+                        {product.images?.[0] ? (
+                          <img 
+                            src={product.images[0].src}
+                            alt={product.name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-gray-5 text-xs">
+                            No image
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Product Info */}
+                      <div className="flex-1 min-w-0">
+                        <h4 className="text-sm font-medium text-gray-1 line-clamp-2 mb-2">
+                          {product.name}
+                        </h4>
+                        
+                        {/* Description */}
+                        {product.shortDescription && (
+                          <p className="text-xs text-gray-5 line-clamp-2 mb-2">
+                            {product.shortDescription}
+                          </p>
+                        )}
+                        
+                        {/* Pricing */}
+                        <div className="flex items-center gap-4 text-xs">
+                          <div>
+                            <span className="text-gray-5">Cost: </span>
+                            <span className="text-red-400 font-medium">{formatCurrency(product.basePrice)}</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-5">Sell: </span>
+                            <span className="text-green-400 font-medium">{formatCurrency(product.price)}</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-5">Profit: </span>
+                            <span className="text-main-1 font-medium">
+                              {formatCurrency(product.price - product.basePrice)}
+                            </span>
+                          </div>
                         </div>
-                      )}
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-1 line-clamp-2">{product.name}</p>
-                      <p className="text-xs text-gray-5 mt-1">
-                        Cost: {formatCurrency(product.basePrice)} → Sell: {formatCurrency(product.price)}
-                      </p>
+                    
+                    {/* Actions */}
+                    <div className="flex items-center justify-between mt-4 pt-3 border-t border-dark-4">
+                      <a
+                        href={`https://www.cjdropshipping.com/product/${product.slug || product.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-p-${product.id}.html`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-xs text-main-1 hover:text-main-1/80 transition-colors"
+                      >
+                        <HiOutlineExternalLink className="w-4 h-4" />
+                        View on CJ Dropshipping
+                      </a>
+                      <Button 
+                        size="sm" 
+                        onClick={() => importCJProduct(product)}
+                        disabled={isSaving}
+                        leftIcon={<HiOutlineCloudDownload className="w-4 h-4" />}
+                      >
+                        Import Product
+                      </Button>
                     </div>
-                    <Button 
-                      size="sm" 
-                      variant="secondary"
-                      onClick={() => importCJProduct(product)}
-                      disabled={isSaving}
-                    >
-                      <HiOutlineCloudDownload className="w-4 h-4" />
-                    </Button>
                   </div>
                 ))}
               </div>
@@ -486,6 +529,13 @@ export default function ProductsPage() {
             <p className="text-center text-gray-5 py-8">
               No products found. Try a different search term.
             </p>
+          )}
+          
+          {!cjSearchQuery && !isSearchingCJ && (
+            <div className="text-center py-8 text-gray-5">
+              <p>Search for products in the CJ Dropshipping catalog above.</p>
+              <p className="text-xs mt-2">Try searches like: &quot;gaming mouse&quot;, &quot;LED lights&quot;, &quot;phone accessories&quot;</p>
+            </div>
           )}
         </div>
       </Modal>

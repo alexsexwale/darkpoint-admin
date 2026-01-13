@@ -76,10 +76,8 @@ export default function CouponsPage() {
     try {
       let query = supabase
         .from('user_coupons')
-        .select(`
-          *,
-          user_profiles:user_id (id, email, username, display_name)
-        `, { count: 'exact' })
+        // user_coupons.user_id references auth.users, not user_profiles, so don't embed here.
+        .select('*', { count: 'exact' })
         .order('created_at', { ascending: false })
         .range((page - 1) * pageSize, page * pageSize - 1);
 

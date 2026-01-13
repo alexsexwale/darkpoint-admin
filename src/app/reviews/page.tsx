@@ -63,10 +63,7 @@ export default function ReviewsPage() {
     try {
       let query = supabase
         .from('product_reviews')
-        .select(`
-          *,
-          user_profiles (id, username, display_name, email, avatar_url)
-        `, { count: 'exact' })
+        .select('*', { count: 'exact' })
         .order('created_at', { ascending: false })
         .range((page - 1) * pageSize, page * pageSize - 1);
 
@@ -85,7 +82,38 @@ export default function ReviewsPage() {
       if (error) {
         console.error('Error fetching reviews:', error);
       } else {
-        setReviews(data || []);
+        const rows = (data || []) as ProductReview[];
+
+        // product_reviews.user_id references auth.users, not user_profiles.
+        // So we fetch user_profiles separately and stitch them in client-side.
+        const userIds = Array.from(
+          new Set(rows.map((r) => (r as unknown as { user_id?: string }).user_id).filter(Boolean) as string[])
+        );
+
+        if (userIds.length > 0) {
+          const { data: profilesData, error: profilesError } = await supabase
+            .from('user_profiles')
+            .select('id, username, display_name, email, avatar_url')
+            .in('id', userIds);
+
+          if (profilesError) {
+            console.error('Error fetching review authors:', profilesError);
+            setReviews(rows);
+          } else {
+            const byId = new Map((profilesData || []).map((p) => [p.id, p]));
+            setReviews(
+              rows.map((r) => {
+                const uid = (r as unknown as { user_id?: string }).user_id || '';
+                return {
+                  ...r,
+                  user_profiles: byId.get(uid),
+                } as ProductReview;
+              })
+            );
+          }
+        } else {
+          setReviews(rows);
+        }
         setTotalCount(count || 0);
       }
     } catch (err) {

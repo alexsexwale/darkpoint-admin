@@ -14,7 +14,19 @@ import {
   HiOutlineTicket,
   HiOutlineUserGroup,
   HiOutlinePencil,
+  HiOutlineRefresh,
+  HiOutlineFire,
+  HiOutlineSparkles,
+  HiOutlinePuzzle,
+  HiOutlinePlay,
+  HiOutlineCurrencyDollar,
+  HiOutlineBadgeCheck,
+  HiOutlineCalendar,
+  HiOutlineBan,
+  HiOutlineCheckCircle,
+  HiOutlineExclamationCircle,
 } from 'react-icons/hi';
+import { IconType } from 'react-icons';
 import { 
   Card, 
   CardHeader, 
@@ -59,6 +71,69 @@ function getXPForLevel(level: number): number {
   return 51300 + (level - 49) * 5000;
 }
 
+// XP Transaction styling based on action type
+function getXPTransactionStyle(actionOrDesc: string): { icon: IconType; color: string; bgColor: string; label: string } {
+  const text = actionOrDesc.toLowerCase();
+  
+  // Spin wheel
+  if (text.includes('spin') || text.includes('wheel')) {
+    return { icon: HiOutlineRefresh, color: 'text-purple-400', bgColor: 'bg-purple-500/20', label: 'Spin' };
+  }
+  
+  // Quest
+  if (text.includes('quest')) {
+    return { icon: HiOutlinePuzzle, color: 'text-blue-400', bgColor: 'bg-blue-500/20', label: 'Quest' };
+  }
+  
+  // Daily streak
+  if (text.includes('streak') || text.includes('day ')) {
+    return { icon: HiOutlineFire, color: 'text-orange-400', bgColor: 'bg-orange-500/20', label: 'Streak' };
+  }
+  
+  // Daily login / Midnight visitor
+  if (text.includes('login') || text.includes('midnight') || text.includes('visitor')) {
+    return { icon: HiOutlineCalendar, color: 'text-cyan-400', bgColor: 'bg-cyan-500/20', label: 'Daily' };
+  }
+  
+  // Arcade / Game
+  if (text.includes('arcade') || text.includes('game')) {
+    return { icon: HiOutlinePlay, color: 'text-pink-400', bgColor: 'bg-pink-500/20', label: 'Arcade' };
+  }
+  
+  // Purchase
+  if (text.includes('purchase') || text.includes('order') || text.includes('buy')) {
+    return { icon: HiOutlineShoppingCart, color: 'text-green-400', bgColor: 'bg-green-500/20', label: 'Purchase' };
+  }
+  
+  // Review
+  if (text.includes('review')) {
+    return { icon: HiOutlineStar, color: 'text-yellow-400', bgColor: 'bg-yellow-500/20', label: 'Review' };
+  }
+  
+  // Referral
+  if (text.includes('referral') || text.includes('refer')) {
+    return { icon: HiOutlineUserGroup, color: 'text-teal-400', bgColor: 'bg-teal-500/20', label: 'Referral' };
+  }
+  
+  // Achievement
+  if (text.includes('achievement') || text.includes('badge')) {
+    return { icon: HiOutlineBadgeCheck, color: 'text-amber-400', bgColor: 'bg-amber-500/20', label: 'Badge' };
+  }
+  
+  // Redeem / Spend
+  if (text.includes('redeem') || text.includes('spend') || text.includes('boost')) {
+    return { icon: HiOutlineCurrencyDollar, color: 'text-red-400', bgColor: 'bg-red-500/20', label: 'Redeem' };
+  }
+  
+  // Bonus / Reward
+  if (text.includes('bonus') || text.includes('reward')) {
+    return { icon: HiOutlineGift, color: 'text-emerald-400', bgColor: 'bg-emerald-500/20', label: 'Bonus' };
+  }
+  
+  // Default
+  return { icon: HiOutlineSparkles, color: 'text-gray-400', bgColor: 'bg-gray-500/20', label: 'XP' };
+}
+
 export default function MemberDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -76,6 +151,10 @@ export default function MemberDetailPage() {
   const [xpAmount, setXPAmount] = useState('');
   const [xpReason, setXPReason] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  
+  const [showSuspendModal, setShowSuspendModal] = useState(false);
+  const [suspendReason, setSuspendReason] = useState('');
+  const [isSuspending, setIsSuspending] = useState(false);
 
   useEffect(() => {
     fetchMemberData();
@@ -190,6 +269,40 @@ export default function MemberDetailPage() {
       console.error('Error adding XP:', err);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const toggleSuspension = async (suspend: boolean) => {
+    if (!member) return;
+    setIsSuspending(true);
+    
+    try {
+      const response = await fetch('/api/members/suspend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: memberId,
+          suspend,
+          reason: suspendReason || undefined,
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (!data.success) {
+        alert(data.error || 'Failed to update suspension status');
+        return;
+      }
+
+      // Refresh data
+      await fetchMemberData();
+      setShowSuspendModal(false);
+      setSuspendReason('');
+    } catch (err) {
+      console.error('Error updating suspension:', err);
+      alert('An error occurred');
+    } finally {
+      setIsSuspending(false);
     }
   };
 
@@ -399,25 +512,63 @@ export default function MemberDetailPage() {
           {/* XP History */}
           <Card>
             <CardHeader>
-              <CardTitle>XP History</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <HiOutlineLightningBolt className="w-5 h-5 text-amber-400" />
+                XP History
+              </CardTitle>
             </CardHeader>
             {xpTransactions.length === 0 ? (
               <p className="text-gray-5 text-center py-6">No XP transactions yet</p>
             ) : (
-              <div className="divide-y divide-dark-4">
-                {xpTransactions.slice(0, 10).map((tx) => (
-                  <div key={tx.id} className="flex items-center justify-between py-3">
-                    <div>
-                      <p className="text-sm text-gray-1">{tx.description || tx.action}</p>
-                      <p className="text-xs text-gray-5">
-                        {format(new Date(tx.created_at), 'MMM d, yyyy HH:mm')}
-                      </p>
+              <div className="space-y-2">
+                {xpTransactions.slice(0, 10).map((tx) => {
+                  const isPositive = tx.amount >= 0;
+                  const { icon: TxIcon, color, bgColor, label } = getXPTransactionStyle(tx.action || tx.description || '');
+                  
+                  return (
+                    <div 
+                      key={tx.id} 
+                      className={`relative flex items-center gap-4 p-3 rounded-lg transition-all duration-200 hover:scale-[1.01] ${
+                        isPositive 
+                          ? 'bg-gradient-to-r from-green-500/5 to-transparent border border-green-500/10' 
+                          : 'bg-gradient-to-r from-red-500/5 to-transparent border border-red-500/10'
+                      }`}
+                    >
+                      {/* Icon */}
+                      <div className={`flex-shrink-0 w-10 h-10 rounded-lg ${bgColor} flex items-center justify-center`}>
+                        <TxIcon className={`w-5 h-5 ${color}`} />
+                      </div>
+                      
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className={`text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded ${bgColor} ${color}`}>
+                            {label}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-2 truncate">
+                          {tx.description || tx.action}
+                        </p>
+                        <p className="text-xs text-gray-5 mt-0.5">
+                          {format(new Date(tx.created_at), 'MMM d, yyyy • HH:mm')}
+                        </p>
+                      </div>
+                      
+                      {/* XP Amount */}
+                      <div className={`flex-shrink-0 text-right`}>
+                        <div className={`text-lg font-bold ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
+                          {isPositive ? '+' : ''}{tx.amount.toLocaleString()}
+                        </div>
+                        <div className="text-[10px] uppercase tracking-wider text-gray-5">XP</div>
+                      </div>
+                      
+                      {/* Decorative glow for large amounts */}
+                      {Math.abs(tx.amount) >= 100 && (
+                        <div className={`absolute inset-0 rounded-lg ${isPositive ? 'bg-green-400/5' : 'bg-red-400/5'} blur-xl -z-10`} />
+                      )}
                     </div>
-                    <span className={`font-medium ${tx.amount >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      {tx.amount >= 0 ? '+' : ''}{tx.amount} XP
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </Card>
@@ -447,7 +598,49 @@ export default function MemberDetailPage() {
               >
                 Send Email
               </Button>
+              
+              {/* Suspend / Unsuspend Button */}
+              {member.is_suspended ? (
+                <Button 
+                  variant="secondary" 
+                  className="w-full justify-start text-green-400 hover:text-green-300 border-green-500/30 hover:border-green-500/50"
+                  onClick={() => toggleSuspension(false)}
+                  leftIcon={<HiOutlineCheckCircle className="w-4 h-4" />}
+                  disabled={isSuspending}
+                >
+                  {isSuspending ? 'Unsuspending...' : 'Unsuspend User'}
+                </Button>
+              ) : (
+                <Button 
+                  variant="secondary" 
+                  className="w-full justify-start text-red-400 hover:text-red-300 border-red-500/30 hover:border-red-500/50"
+                  onClick={() => setShowSuspendModal(true)}
+                  leftIcon={<HiOutlineBan className="w-4 h-4" />}
+                >
+                  Suspend User
+                </Button>
+              )}
             </div>
+            
+            {/* Suspension Status Banner */}
+            {member.is_suspended && (
+              <div className="mt-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+                <div className="flex items-center gap-2 text-red-400 mb-1">
+                  <HiOutlineExclamationCircle className="w-4 h-4" />
+                  <span className="font-semibold text-sm">Account Suspended</span>
+                </div>
+                {member.suspended_at && (
+                  <p className="text-xs text-gray-5">
+                    Since {format(new Date(member.suspended_at), 'MMM d, yyyy HH:mm')}
+                  </p>
+                )}
+                {member.suspension_reason && (
+                  <p className="text-xs text-gray-4 mt-1">
+                    Reason: {member.suspension_reason}
+                  </p>
+                )}
+              </div>
+            )}
           </Card>
 
           {/* Account Details */}
@@ -594,6 +787,62 @@ export default function MemberDetailPage() {
             </Button>
             <Button onClick={addXP} isLoading={isSaving}>
               Apply Adjustment
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Suspend User Modal */}
+      <Modal
+        isOpen={showSuspendModal}
+        onClose={() => {
+          setShowSuspendModal(false);
+          setSuspendReason('');
+        }}
+        title="Suspend User"
+        description="This will prevent the user from logging in to their account"
+      >
+        <div className="space-y-4">
+          <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
+            <div className="flex items-start gap-3">
+              <HiOutlineExclamationCircle className="w-6 h-6 text-red-400 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm text-gray-1 font-medium">
+                  Are you sure you want to suspend {member?.display_name || member?.username}?
+                </p>
+                <p className="text-xs text-gray-5 mt-1">
+                  The user will be unable to log in until you unsuspend their account. 
+                  Their data and progress will be preserved.
+                </p>
+              </div>
+            </div>
+          </div>
+          
+          <Input
+            label="Reason for suspension"
+            value={suspendReason}
+            onChange={(e) => setSuspendReason(e.target.value)}
+            placeholder="e.g., Violation of community guidelines"
+            hint="This will be visible to admins only"
+          />
+          
+          <div className="flex justify-end gap-3">
+            <Button 
+              variant="secondary" 
+              onClick={() => {
+                setShowSuspendModal(false);
+                setSuspendReason('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button 
+              variant="primary"
+              className="bg-red-500 hover:bg-red-600"
+              onClick={() => toggleSuspension(true)}
+              isLoading={isSuspending}
+            >
+              Suspend User
             </Button>
           </div>
         </div>

@@ -256,7 +256,7 @@ export default function MembersPage() {
                 <TableRow key={member.id} onClick={() => router.push(`/members/${member.id}`)}>
                   <TableCell>
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-main-1 to-amber-600 flex items-center justify-center flex-shrink-0">
+                      <div className={`relative w-10 h-10 rounded-full bg-gradient-to-br from-main-1 to-amber-600 flex items-center justify-center flex-shrink-0 ${member.is_suspended ? 'opacity-50 grayscale' : ''}`}>
                         {member.avatar_url ? (
                           <img 
                             src={member.avatar_url} 
@@ -268,11 +268,23 @@ export default function MembersPage() {
                             {(member.display_name || member.username || member.email || 'U').charAt(0).toUpperCase()}
                           </span>
                         )}
+                        {member.is_suspended && (
+                          <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center border-2 border-dark-2">
+                            <span className="text-[8px]">🚫</span>
+                          </div>
+                        )}
                       </div>
                       <div>
-                        <p className="font-medium text-gray-1">
-                          {member.display_name || member.username || 'Anonymous'}
-                        </p>
+                        <div className="flex items-center gap-2">
+                          <p className={`font-medium ${member.is_suspended ? 'text-gray-5 line-through' : 'text-gray-1'}`}>
+                            {member.display_name || member.username || 'Anonymous'}
+                          </p>
+                          {member.is_suspended && (
+                            <span className="text-[10px] uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded bg-red-500/20 text-red-400">
+                              Suspended
+                            </span>
+                          )}
+                        </div>
                         <p className="text-xs text-gray-5">{member.email}</p>
                       </div>
                     </div>
