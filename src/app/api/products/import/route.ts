@@ -184,7 +184,7 @@ export async function POST(request: NextRequest) {
       variants: transformedVariants,
       weight: cjProduct.weight || 0,
       source_from: cjProduct.sourceFrom || 'China',
-      is_active: true,
+      is_active: false, // Products are inactive by default until admin activates them
       is_featured: false,
       last_synced_at: new Date().toISOString(),
       

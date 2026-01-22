@@ -683,6 +683,35 @@ export default function ProductDetailPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // Toggle product active/featured status
+  const [isTogglingStatus, setIsTogglingStatus] = useState(false);
+  
+  const toggleProductStatus = async (field: 'is_active' | 'is_featured') => {
+    if (!product || isTogglingStatus) return;
+    setIsTogglingStatus(true);
+    
+    try {
+      const newValue = !product[field];
+      const { error } = await supabase
+        .from('admin_products')
+        .update({ 
+          [field]: newValue, 
+          updated_at: new Date().toISOString() 
+        })
+        .eq('id', product.id);
+      
+      if (error) throw error;
+      
+      // Update local state immediately for responsive UI
+      setProduct(prev => prev ? { ...prev, [field]: newValue } : null);
+    } catch (err) {
+      console.error('Error toggling status:', err);
+      alert('Failed to update product status');
+    } finally {
+      setIsTogglingStatus(false);
+    }
+  };
+
   const handleSync = async () => {
     if (!product) return;
     setIsSyncing(true);
@@ -766,19 +795,6 @@ export default function ProductDetailPage() {
 
         {/* Status Badges */}
         <div className="flex flex-wrap items-center gap-2 mb-6">
-          <span className={clsx(
-            'px-3 py-1.5 rounded-full text-xs font-medium',
-            product.is_active 
-              ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-              : 'bg-red-500/20 text-red-400 border border-red-500/30'
-          )}>
-            {product.is_active ? '● Active' : '○ Inactive'}
-          </span>
-          {product.is_featured && (
-            <span className="px-3 py-1.5 rounded-full text-xs font-medium bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">
-              ★ Featured
-            </span>
-          )}
           {product.category && (
             <span className="px-3 py-1.5 rounded-full text-xs font-medium bg-blue-500/20 text-blue-400 border border-blue-500/30">
               {product.category}
@@ -793,6 +809,79 @@ export default function ProductDetailPage() {
             <HiOutlineExternalLink className="w-3.5 h-3.5" />
             View on CJ
           </a>
+        </div>
+
+        {/* Status Toggles */}
+        <div className="flex flex-wrap items-center gap-4 mb-6 p-4 bg-dark-3/50 rounded-lg border border-dark-4">
+          {/* Active/Inactive Toggle */}
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-gray-5">Status:</span>
+            <button
+              onClick={() => toggleProductStatus('is_active')}
+              disabled={isTogglingStatus}
+              className={clsx(
+                'relative inline-flex h-7 w-14 items-center rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-dark-2',
+                product.is_active 
+                  ? 'bg-green-500 focus:ring-green-500' 
+                  : 'bg-red-500/50 focus:ring-red-500',
+                isTogglingStatus && 'opacity-50 cursor-wait'
+              )}
+            >
+              <span
+                className={clsx(
+                  'inline-block h-5 w-5 transform rounded-full bg-white shadow-lg transition-transform duration-200',
+                  product.is_active ? 'translate-x-8' : 'translate-x-1'
+                )}
+              />
+            </button>
+            <span className={clsx(
+              'text-sm font-medium',
+              product.is_active ? 'text-green-400' : 'text-red-400'
+            )}>
+              {product.is_active ? 'Active' : 'Inactive'}
+            </span>
+            {!product.is_active && (
+              <span className="text-xs text-gray-5">(Not visible on store)</span>
+            )}
+          </div>
+
+          <div className="w-px h-6 bg-dark-4 hidden sm:block" />
+
+          {/* Featured Toggle */}
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-gray-5">Featured:</span>
+            <button
+              onClick={() => toggleProductStatus('is_featured')}
+              disabled={isTogglingStatus}
+              className={clsx(
+                'relative inline-flex h-7 w-14 items-center rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-dark-2',
+                product.is_featured 
+                  ? 'bg-yellow-500 focus:ring-yellow-500' 
+                  : 'bg-dark-4 focus:ring-gray-500',
+                isTogglingStatus && 'opacity-50 cursor-wait'
+              )}
+            >
+              <span
+                className={clsx(
+                  'inline-block h-5 w-5 transform rounded-full bg-white shadow-lg transition-transform duration-200',
+                  product.is_featured ? 'translate-x-8' : 'translate-x-1'
+                )}
+              />
+            </button>
+            <span className={clsx(
+              'text-sm font-medium flex items-center gap-1',
+              product.is_featured ? 'text-yellow-400' : 'text-gray-5'
+            )}>
+              {product.is_featured ? (
+                <>
+                  <HiOutlineStar className="w-4 h-4" />
+                  Featured
+                </>
+              ) : (
+                'Not Featured'
+              )}
+            </span>
+          </div>
         </div>
 
         {/* Action Buttons */}

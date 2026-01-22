@@ -82,6 +82,7 @@ export default function ProductsPage() {
   const [isSearchingCJ, setIsSearchingCJ] = useState(false);
   const [importingProductId, setImportingProductId] = useState<string | null>(null);
   const [cjSearchSource, setCJSearchSource] = useState<'catalog' | 'my-products'>('catalog');
+  const [importedCJProductIds, setImportedCJProductIds] = useState<Set<string>>(new Set());
   
   // Per-product pricing overrides: { productId: { markup?: number, customPrice?: number } }
   const [productPricing, setProductPricing] = useState<Record<string, { markup?: number; customPrice?: number }>>({});
@@ -155,9 +156,26 @@ export default function ProductsPage() {
     }
   }, [page, pageSize, categoryFilter, statusFilter, searchQuery]);
 
+  // Fetch list of already-imported CJ product IDs
+  const fetchImportedCJProductIds = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('admin_products')
+        .select('cj_product_id');
+      
+      if (error) throw error;
+      
+      const ids = new Set<string>(data?.map(p => p.cj_product_id) || []);
+      setImportedCJProductIds(ids);
+    } catch (err) {
+      console.error('Error fetching imported product IDs:', err);
+    }
+  }, []);
+
   useEffect(() => {
     fetchProducts();
-  }, [fetchProducts]);
+    fetchImportedCJProductIds();
+  }, [fetchProducts, fetchImportedCJProductIds]);
 
   const searchCJProducts = async () => {
     // For catalog, query is required. For my-products, it's optional (can browse all)
@@ -175,7 +193,11 @@ export default function ProductsPage() {
       const result = await response.json();
       
       if (result.success) {
-        setCJProducts(result.data || []);
+        // Filter out products that have already been imported
+        const filteredProducts = (result.data || []).filter(
+          (product: any) => !importedCJProductIds.has(product.id)
+        );
+        setCJProducts(filteredProducts);
       } else {
         console.error('CJ search error:', result.error);
       }
@@ -216,6 +238,8 @@ export default function ProductsPage() {
           delete next[cjProduct.id];
           return next;
         });
+        // Add to imported IDs set so it won't show up in future searches
+        setImportedCJProductIds(prev => new Set([...prev, cjProduct.id]));
         await fetchProducts();
         // Don't close modal - allow importing more products
       } else {
