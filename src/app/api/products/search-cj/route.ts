@@ -129,16 +129,30 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const query = searchParams.get('q') || '';
     const page = parseInt(searchParams.get('page') || '1');
+    const source = searchParams.get('source') || 'catalog'; // 'catalog' or 'my-products'
 
-    if (!query) {
+    // For catalog search, query is required
+    if (source === 'catalog' && !query) {
       return NextResponse.json({ success: false, error: 'Search query required' }, { status: 400 });
     }
 
-    const result = await cjDropshipping.getProducts({
-      keywords: query,
-      pageNum: page,
-      pageSize: 20,
-    });
+    let result: { success: boolean; data?: any[]; error?: string };
+
+    if (source === 'my-products') {
+      // Search from user's added products
+      result = await cjDropshipping.getMyProducts({
+        keyword: query || undefined,
+        pageNum: page,
+        pageSize: 20,
+      });
+    } else {
+      // Search from general CJ catalog
+      result = await cjDropshipping.getProducts({
+        keywords: query,
+        pageNum: page,
+        pageSize: 20,
+      });
+    }
 
     if (!result.success) {
       return NextResponse.json({ success: false, error: result.error }, { status: 500 });

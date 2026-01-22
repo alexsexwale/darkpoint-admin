@@ -81,6 +81,7 @@ export default function ProductsPage() {
   const [cjProducts, setCJProducts] = useState<any[]>([]);
   const [isSearchingCJ, setIsSearchingCJ] = useState(false);
   const [importingProductId, setImportingProductId] = useState<string | null>(null);
+  const [cjSearchSource, setCJSearchSource] = useState<'catalog' | 'my-products'>('catalog');
   
   // Per-product pricing overrides: { productId: { markup?: number, customPrice?: number } }
   const [productPricing, setProductPricing] = useState<Record<string, { markup?: number; customPrice?: number }>>({});
@@ -159,11 +160,18 @@ export default function ProductsPage() {
   }, [fetchProducts]);
 
   const searchCJProducts = async () => {
-    if (!cjSearchQuery.trim()) return;
+    // For catalog, query is required. For my-products, it's optional (can browse all)
+    if (cjSearchSource === 'catalog' && !cjSearchQuery.trim()) return;
     setIsSearchingCJ(true);
     
     try {
-      const response = await fetch(`/api/products/search-cj?q=${encodeURIComponent(cjSearchQuery)}`);
+      const params = new URLSearchParams();
+      if (cjSearchQuery.trim()) {
+        params.set('q', cjSearchQuery);
+      }
+      params.set('source', cjSearchSource);
+      
+      const response = await fetch(`/api/products/search-cj?${params.toString()}`);
       const result = await response.json();
       
       if (result.success) {
@@ -554,6 +562,7 @@ export default function ProductsPage() {
           setShowAddModal(false);
           setCJProducts([]);
           setCJSearchQuery('');
+          setCJSearchSource('catalog');
         }}
         title="Add Product from CJ Dropshipping"
         size="full"
@@ -635,18 +644,60 @@ export default function ProductsPage() {
           </div>
 
           {/* Search CJ */}
-          <div className="flex gap-3">
-            <Input
-              placeholder="Search CJ Dropshipping catalog..."
-              value={cjSearchQuery}
-              onChange={(e) => setCJSearchQuery(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && searchCJProducts()}
-              leftIcon={<HiOutlineSearch className="w-4 h-4" />}
-              className="flex-1"
-            />
-            <Button onClick={searchCJProducts} isLoading={isSearchingCJ}>
-              Search
-            </Button>
+          <div className="space-y-3">
+            {/* Source Toggle */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-5">Search in:</span>
+              <div className="flex rounded-lg overflow-hidden border border-dark-4">
+                <button
+                  onClick={() => {
+                    setCJSearchSource('catalog');
+                    setCJProducts([]);
+                  }}
+                  className={`px-4 py-2 text-sm font-medium transition-colors ${
+                    cjSearchSource === 'catalog'
+                      ? 'bg-main-1 text-white'
+                      : 'bg-dark-3 text-gray-5 hover:text-gray-1'
+                  }`}
+                >
+                  CJ Catalog
+                </button>
+                <button
+                  onClick={() => {
+                    setCJSearchSource('my-products');
+                    setCJProducts([]);
+                  }}
+                  className={`px-4 py-2 text-sm font-medium transition-colors ${
+                    cjSearchSource === 'my-products'
+                      ? 'bg-main-1 text-white'
+                      : 'bg-dark-3 text-gray-5 hover:text-gray-1'
+                  }`}
+                >
+                  My Added Products
+                </button>
+              </div>
+              {cjSearchSource === 'my-products' && (
+                <span className="text-xs text-gray-5 ml-2">(Products you&apos;ve added to your CJ account)</span>
+              )}
+            </div>
+            
+            {/* Search Input */}
+            <div className="flex gap-3">
+              <Input
+                placeholder={cjSearchSource === 'catalog' 
+                  ? "Search CJ Dropshipping catalog..." 
+                  : "Search your added products (or leave empty to browse all)..."
+                }
+                value={cjSearchQuery}
+                onChange={(e) => setCJSearchQuery(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && searchCJProducts()}
+                leftIcon={<HiOutlineSearch className="w-4 h-4" />}
+                className="flex-1"
+              />
+              <Button onClick={searchCJProducts} isLoading={isSearchingCJ}>
+                {cjSearchSource === 'my-products' && !cjSearchQuery.trim() ? 'Browse All' : 'Search'}
+              </Button>
+            </div>
           </div>
 
           {/* CJ Products Results */}

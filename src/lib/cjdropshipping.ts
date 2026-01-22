@@ -270,6 +270,68 @@ class CJDropshippingAPI {
     }
   }
 
+  // Get user's added products (My Products) with pagination and filters
+  // Documentation: https://developers.cjdropshipping.cn/en/api/api2/api/product.html#_1-3-my-product-list-get
+  async getMyProducts(params: {
+    pageNum?: number;
+    pageSize?: number;
+    keyword?: string;
+    categoryId?: string;
+  } = {}): Promise<{ success: boolean; data?: CJProduct[]; total?: number; error?: string }> {
+    try {
+      const response: AxiosResponse = await this.client.get('/v1/product/myProduct/query', {
+        params: {
+          pageNum: params.pageNum || 1,
+          pageSize: params.pageSize || 20,
+          keyword: params.keyword || undefined,
+          categoryId: params.categoryId || undefined,
+        },
+      });
+
+      if (response.data.result || response.data.success) {
+        const responseData = response.data.data;
+        // Response format: { pageSize, pageNumber, totalRecords, totalPages, content: [...] }
+        const content = responseData?.content || [];
+        const total = responseData?.totalRecords || content.length;
+        
+        // Transform the response to match CJProduct format
+        const products = content.map((item: any) => ({
+          pid: item.productId,
+          productNameEn: item.nameEn,
+          productName: item.productName,
+          productSku: item.sku,
+          productImage: item.bigImage,
+          sellPrice: parseFloat(item.sellPrice) || parseFloat(item.totalPrice) || 0,
+          productWeight: parseFloat(item.weight) || 0,
+          categoryId: item.categoryId,
+          variants: item.vid ? [{
+            vid: item.vid,
+            variantSku: item.sku,
+            sellPrice: parseFloat(item.sellPrice) || 0,
+          }] : [],
+        }));
+        
+        return {
+          success: true,
+          data: products,
+          total,
+        };
+      } else {
+        return {
+          success: false,
+          error: response.data.message || 'Failed to fetch user products',
+        };
+      }
+    } catch (error: unknown) {
+      console.error('CJ My Products API error:', error);
+      const err = error as { response?: { data?: { message?: string } }; message?: string };
+      return {
+        success: false,
+        error: err?.response?.data?.message || err?.message || 'API request failed',
+      };
+    }
+  }
+
   // Get single product details
   async getProduct(productId: string): Promise<{ success: boolean; data?: CJProduct; error?: string }> {
     try {

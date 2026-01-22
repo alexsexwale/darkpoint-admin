@@ -144,6 +144,29 @@ export async function POST(request: NextRequest) {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '') + '-' + cjProduct.id;
 
+    // Transform variants with ZAR pricing
+    const transformedVariants = (cjProduct.variants || []).map((v: any) => {
+      // Get variant price in USD, fall back to base price if not specified
+      const variantPriceUSD = parseFloat(v.price) || basePriceUSD;
+      // Convert to ZAR cost
+      const variantCostZAR = Math.ceil(variantPriceUSD * rate);
+      // Apply markup to get sell price
+      const variantSellZAR = Math.ceil(variantCostZAR * (1 + markupPercent / 100));
+      
+      return {
+        id: v.id,
+        name: v.name,
+        value: v.value,
+        sku: v.sku,
+        image: v.image,
+        stock: v.stock || 0,
+        // Store both USD and ZAR pricing
+        priceUSD: variantPriceUSD,
+        costZAR: variantCostZAR,
+        price: variantSellZAR, // This is the sell price in ZAR that gets used on the frontend
+      };
+    });
+
     // Build product data with all available fields
     const productData: Record<string, unknown> = {
       cj_product_id: cjProduct.id,
@@ -158,7 +181,7 @@ export async function POST(request: NextRequest) {
       category: cjProduct.category || mapCategory(cjProduct.name),
       tags: cjProduct.tags || extractTags(cjProduct.name, cjProduct.description || ''),
       images: images,
-      variants: cjProduct.variants || [],
+      variants: transformedVariants,
       weight: cjProduct.weight || 0,
       source_from: cjProduct.sourceFrom || 'China',
       is_active: true,

@@ -42,8 +42,13 @@ interface ProductImage {
 interface ProductVariant {
   id: string;
   name: string;
+  value?: string;
   price?: number;
+  priceUSD?: number;
+  costZAR?: number;
   sku?: string;
+  image?: string;
+  stock?: number;
   inStock?: boolean;
 }
 
@@ -100,6 +105,315 @@ const formatUSD = (amount: number) => {
     minimumFractionDigits: 2,
   }).format(amount);
 };
+
+// Variant Pricing Section Component
+interface VariantPricingSectionProps {
+  product: AdminProduct;
+  variants: ProductVariant[];
+  onVariantsUpdate: () => Promise<void>;
+}
+
+function VariantPricingSection({ product, variants, onVariantsUpdate }: VariantPricingSectionProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [variantPrices, setVariantPrices] = useState<Record<string, number>>({});
+  const [bulkMarkup, setBulkMarkup] = useState<number>(product.markup_percent || 150);
+
+  // Initialize variant prices from current values
+  useEffect(() => {
+    const prices: Record<string, number> = {};
+    variants.forEach(v => {
+      if (v.id && v.price) {
+        prices[v.id] = v.price;
+      }
+    });
+    setVariantPrices(prices);
+  }, [variants]);
+
+  // Apply bulk markup to all variants
+  const applyBulkMarkup = () => {
+    const newPrices: Record<string, number> = {};
+    variants.forEach(v => {
+      if (v.id) {
+        // Use costZAR if available, otherwise calculate from priceUSD or fallback to base price
+        const costZAR = v.costZAR || (v.priceUSD ? Math.ceil(v.priceUSD * (product.exchange_rate_used || 18)) : product.base_price);
+        newPrices[v.id] = Math.ceil(costZAR * (1 + bulkMarkup / 100));
+      }
+    });
+    setVariantPrices(newPrices);
+  };
+
+  // Save variant prices
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      // Update variants with new prices
+      const updatedVariants = variants.map(v => ({
+        ...v,
+        price: variantPrices[v.id] || v.price,
+      }));
+
+      const { error } = await supabase
+        .from('admin_products')
+        .update({
+          variants: updatedVariants,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', product.id);
+
+      if (error) throw error;
+
+      await onVariantsUpdate();
+      setIsEditing(false);
+    } catch (err) {
+      console.error('Error saving variant prices:', err);
+      alert('Failed to save variant prices');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Calculate profit for a variant
+  const getVariantProfit = (variant: ProductVariant) => {
+    const sellPrice = variantPrices[variant.id] || variant.price || 0;
+    const costZAR = variant.costZAR || (variant.priceUSD ? Math.ceil(variant.priceUSD * (product.exchange_rate_used || 18)) : product.base_price);
+    return sellPrice - costZAR;
+  };
+
+  // Get margin percentage
+  const getVariantMargin = (variant: ProductVariant) => {
+    const sellPrice = variantPrices[variant.id] || variant.price || 0;
+    const costZAR = variant.costZAR || (variant.priceUSD ? Math.ceil(variant.priceUSD * (product.exchange_rate_used || 18)) : product.base_price);
+    if (sellPrice <= 0) return 0;
+    return ((sellPrice - costZAR) / sellPrice) * 100;
+  };
+
+  return (
+    <div className="bg-dark-3 rounded-xl border border-dark-4 p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-medium text-gray-5 uppercase tracking-wider flex items-center gap-2">
+          <HiOutlineColorSwatch className="w-4 h-4" />
+          Variants & Pricing ({variants.length})
+        </h3>
+        {!isEditing ? (
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setIsEditing(true)}
+            leftIcon={<HiOutlinePencil className="w-3.5 h-3.5" />}
+            className="!py-1 !px-2 text-xs"
+          >
+            Edit Prices
+          </Button>
+        ) : (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setIsEditing(false);
+                // Reset prices
+                const prices: Record<string, number> = {};
+                variants.forEach(v => {
+                  if (v.id && v.price) prices[v.id] = v.price;
+                });
+                setVariantPrices(prices);
+              }}
+              className="!py-1 !px-2 text-xs"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handleSave}
+              isLoading={isSaving}
+              className="!py-1 !px-2 text-xs"
+            >
+              Save Prices
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* Bulk Markup Controls (when editing) */}
+      {isEditing && (
+        <div className="mb-4 p-4 bg-main-1/5 border border-main-1/20 rounded-lg">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-sm text-gray-3">Apply markup to all variants:</span>
+            <div className="flex items-center gap-2">
+              {[50, 100, 150, 200, 250].map((markup) => (
+                <button
+                  key={markup}
+                  onClick={() => setBulkMarkup(markup)}
+                  className={clsx(
+                    'px-2 py-1 rounded text-xs font-medium transition-colors',
+                    bulkMarkup === markup
+                      ? 'bg-main-1 text-white'
+                      : 'bg-dark-4 text-gray-3 hover:bg-dark-4/80'
+                  )}
+                >
+                  {markup}%
+                </button>
+              ))}
+              <input
+                type="number"
+                value={bulkMarkup}
+                onChange={(e) => setBulkMarkup(Math.max(0, parseInt(e.target.value) || 0))}
+                className="w-16 px-2 py-1 bg-dark-3 border border-dark-4 rounded text-xs text-gray-1 focus:border-main-1 focus:outline-none"
+                min="0"
+              />
+              <span className="text-xs text-gray-5">%</span>
+            </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={applyBulkMarkup}
+              className="!py-1 !px-2 text-xs"
+            >
+              Apply to All
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Variants Table */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-dark-4">
+              <th className="text-left py-2 px-3 text-gray-5 font-medium">Variant</th>
+              <th className="text-right py-2 px-3 text-gray-5 font-medium">Cost (ZAR)</th>
+              <th className="text-right py-2 px-3 text-gray-5 font-medium">Sell Price</th>
+              <th className="text-right py-2 px-3 text-gray-5 font-medium">Profit</th>
+              <th className="text-right py-2 px-3 text-gray-5 font-medium">Margin</th>
+              <th className="text-center py-2 px-3 text-gray-5 font-medium">Stock</th>
+            </tr>
+          </thead>
+          <tbody>
+            {variants.map((variant, index) => {
+              const costZAR = variant.costZAR || (variant.priceUSD ? Math.ceil(variant.priceUSD * (product.exchange_rate_used || 18)) : product.base_price);
+              const sellPrice = variantPrices[variant.id] || variant.price || 0;
+              const profit = getVariantProfit(variant);
+              const margin = getVariantMargin(variant);
+
+              return (
+                <tr 
+                  key={variant.id || index}
+                  className="border-b border-dark-4/50 hover:bg-dark-4/30 transition-colors"
+                >
+                  <td className="py-3 px-3">
+                    <div className="flex items-center gap-3">
+                      {variant.image && (
+                        <img 
+                          src={variant.image} 
+                          alt={variant.name}
+                          className="w-10 h-10 rounded object-cover bg-dark-4"
+                        />
+                      )}
+                      <div>
+                        <p className="text-gray-1 font-medium">
+                          {variant.value || variant.name}
+                        </p>
+                        {variant.sku && (
+                          <p className="text-xs text-gray-5 font-mono">{variant.sku}</p>
+                        )}
+                      </div>
+                    </div>
+                  </td>
+                  <td className="py-3 px-3 text-right">
+                    <span className="text-red-400 font-mono">{formatZAR(costZAR)}</span>
+                    {variant.priceUSD && (
+                      <p className="text-xs text-gray-5 font-mono">{formatUSD(variant.priceUSD)}</p>
+                    )}
+                  </td>
+                  <td className="py-3 px-3 text-right">
+                    {isEditing ? (
+                      <div className="flex items-center justify-end gap-1">
+                        <span className="text-gray-5 text-xs">R</span>
+                        <input
+                          type="number"
+                          value={variantPrices[variant.id] || ''}
+                          onChange={(e) => setVariantPrices(prev => ({
+                            ...prev,
+                            [variant.id]: Math.max(0, parseFloat(e.target.value) || 0)
+                          }))}
+                          className="w-24 px-2 py-1 bg-dark-4 border border-dark-4 rounded text-right text-green-400 font-mono focus:border-main-1 focus:outline-none"
+                          min="0"
+                          placeholder={String(variant.price || costZAR)}
+                        />
+                      </div>
+                    ) : (
+                      <span className="text-green-400 font-bold font-mono">{formatZAR(sellPrice)}</span>
+                    )}
+                  </td>
+                  <td className="py-3 px-3 text-right">
+                    <span className={clsx(
+                      'font-mono',
+                      profit >= 0 ? 'text-main-1' : 'text-red-500'
+                    )}>
+                      {formatZAR(profit)}
+                    </span>
+                  </td>
+                  <td className="py-3 px-3 text-right">
+                    <span className={clsx(
+                      'font-bold',
+                      margin >= 60 ? 'text-green-400' :
+                      margin >= 40 ? 'text-yellow-400' :
+                      margin < 0 ? 'text-red-500' : 'text-red-400'
+                    )}>
+                      {margin.toFixed(0)}%
+                    </span>
+                  </td>
+                  <td className="py-3 px-3 text-center">
+                    <span className={clsx(
+                      'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs',
+                      (variant.stock === undefined || variant.stock > 10)
+                        ? 'bg-green-500/20 text-green-400'
+                        : variant.stock > 0
+                        ? 'bg-yellow-500/20 text-yellow-400'
+                        : 'bg-red-500/20 text-red-400'
+                    )}>
+                      {variant.stock !== undefined ? variant.stock : '∞'}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Summary */}
+      <div className="mt-4 pt-4 border-t border-dark-4 grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
+        <div className="p-3 bg-dark-4/30 rounded-lg">
+          <p className="text-xs text-gray-5">Price Range</p>
+          <p className="text-sm font-bold text-gray-1">
+            {formatZAR(Math.min(...variants.map(v => variantPrices[v.id] || v.price || 0)))} - {formatZAR(Math.max(...variants.map(v => variantPrices[v.id] || v.price || 0)))}
+          </p>
+        </div>
+        <div className="p-3 bg-dark-4/30 rounded-lg">
+          <p className="text-xs text-gray-5">Avg. Sell Price</p>
+          <p className="text-sm font-bold text-green-400">
+            {formatZAR(variants.reduce((sum, v) => sum + (variantPrices[v.id] || v.price || 0), 0) / variants.length)}
+          </p>
+        </div>
+        <div className="p-3 bg-dark-4/30 rounded-lg">
+          <p className="text-xs text-gray-5">Avg. Profit</p>
+          <p className="text-sm font-bold text-main-1">
+            {formatZAR(variants.reduce((sum, v) => sum + getVariantProfit(v), 0) / variants.length)}
+          </p>
+        </div>
+        <div className="p-3 bg-dark-4/30 rounded-lg">
+          <p className="text-xs text-gray-5">Avg. Margin</p>
+          <p className="text-sm font-bold text-yellow-400">
+            {(variants.reduce((sum, v) => sum + getVariantMargin(v), 0) / variants.length).toFixed(0)}%
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function ProductDetailPage() {
   const params = useParams();
@@ -1279,43 +1593,13 @@ export default function ProductDetailPage() {
         </div>
       )}
 
-      {/* Variants Section */}
+      {/* Variants Section - Enhanced with Price Editing */}
       {variants.length > 0 && (
-        <div className="bg-dark-3 rounded-xl border border-dark-4 p-5">
-          <h3 className="text-sm font-medium text-gray-5 uppercase tracking-wider mb-4 flex items-center gap-2">
-            <HiOutlineColorSwatch className="w-4 h-4" />
-            Variants ({variants.length})
-          </h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-            {variants.map((variant, index) => (
-              <div
-                key={variant.id || index}
-                className="p-3 bg-dark-4/50 rounded-lg border border-dark-4"
-              >
-                <p className="text-sm text-gray-1 font-medium truncate">{variant.name}</p>
-                {variant.sku && (
-                  <p className="text-xs text-gray-5 mt-1 truncate">SKU: {variant.sku}</p>
-                )}
-                {variant.price && (
-                  <p className="text-xs text-main-1 mt-1">{formatZAR(variant.price)}</p>
-                )}
-                <div className="flex items-center gap-1 mt-2">
-                  {variant.inStock !== false ? (
-                    <>
-                      <HiOutlineCheckCircle className="w-3 h-3 text-green-400" />
-                      <span className="text-xs text-green-400">In Stock</span>
-                    </>
-                  ) : (
-                    <>
-                      <HiOutlineXCircle className="w-3 h-3 text-red-400" />
-                      <span className="text-xs text-red-400">Out of Stock</span>
-                    </>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <VariantPricingSection 
+          product={product} 
+          variants={variants}
+          onVariantsUpdate={fetchProduct}
+        />
       )}
 
       {/* Website Preview Section */}
