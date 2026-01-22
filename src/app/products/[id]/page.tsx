@@ -51,7 +51,7 @@ interface ProductVariant {
   image?: string;
   stock?: number;
   inStock?: boolean;
-  isHidden?: boolean; // Hide variant from e-commerce website
+  isHidden?: boolean; // Whether to hide this variant on the e-commerce website
 }
 
 interface AdminProduct {
@@ -125,7 +125,7 @@ function VariantPricingSection({ product, variants, onVariantsUpdate }: VariantP
   const [variantGroupName, setVariantGroupName] = useState(product.variant_group_name || '');
   const [bulkMarkup, setBulkMarkup] = useState<number>(product.markup_percent || 150);
 
-  // Initialize variant prices, display names, and hidden state from current values
+  // Initialize variant prices, display names, and hidden states from current values
   useEffect(() => {
     const prices: Record<string, number> = {};
     const displayNames: Record<string, string> = {};
@@ -144,7 +144,7 @@ function VariantPricingSection({ product, variants, onVariantsUpdate }: VariantP
   }, [variants, product.variant_group_name]);
 
   // Count visible variants
-  const visibleVariantsCount = variants.filter(v => !variantHidden[v.id]).length;
+  const visibleCount = variants.filter(v => !variantHidden[v.id]).length;
 
   // Apply bulk markup to all variants
   const applyBulkMarkup = () => {
@@ -163,7 +163,7 @@ function VariantPricingSection({ product, variants, onVariantsUpdate }: VariantP
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      // Update variants with new prices, display names, and hidden state
+      // Update variants with new prices, display names, and visibility
       const updatedVariants = variants.map(v => ({
         ...v,
         price: variantPrices[v.id] || v.price,
@@ -327,12 +327,21 @@ function VariantPricingSection({ product, variants, onVariantsUpdate }: VariantP
         </div>
       )}
 
-      {/* Visible variants info */}
-      {!isEditing && (
-        <div className="mb-3 text-xs text-gray-5">
-          {visibleVariantsCount} of {variants.length} variant{variants.length !== 1 ? 's' : ''} visible on website
-          {visibleVariantsCount === 1 && (
-            <span className="ml-2 text-main-1">(variant selector will be hidden)</span>
+      {/* Visible variants indicator */}
+      {variants.length > 1 && (
+        <div className="mb-3 flex items-center gap-2 text-sm">
+          <span className="text-gray-5">Visible on website:</span>
+          <span className={clsx(
+            "font-medium",
+            visibleCount === 0 ? "text-red-400" : visibleCount === 1 ? "text-yellow-400" : "text-green-400"
+          )}>
+            {visibleCount} of {variants.length} variants
+          </span>
+          {visibleCount === 1 && (
+            <span className="text-gray-5 text-xs">(variant selector will be hidden)</span>
+          )}
+          {visibleCount === 0 && (
+            <span className="text-red-400 text-xs">(product will show base price only)</span>
           )}
         </div>
       )}
@@ -361,11 +370,45 @@ function VariantPricingSection({ product, variants, onVariantsUpdate }: VariantP
               const profit = getVariantProfit(variant);
               const margin = getVariantMargin(variant);
 
+              const isHidden = variantHidden[variant.id] || false;
+              
               return (
                 <tr 
                   key={variant.id || index}
-                  className="border-b border-dark-4/50 hover:bg-dark-4/30 transition-colors"
+                  className={clsx(
+                    "border-b border-dark-4/50 transition-colors",
+                    isHidden ? "opacity-50 bg-dark-4/10" : "hover:bg-dark-4/30"
+                  )}
                 >
+                  {/* Visibility Toggle */}
+                  <td className="py-3 px-3 text-center">
+                    <button
+                      type="button"
+                      onClick={() => setVariantHidden(prev => ({
+                        ...prev,
+                        [variant.id]: !prev[variant.id]
+                      }))}
+                      className={clsx(
+                        "w-8 h-8 rounded-lg flex items-center justify-center transition-all",
+                        isHidden 
+                          ? "bg-dark-4 text-gray-5 hover:bg-dark-4/80" 
+                          : "bg-green-500/20 text-green-400 hover:bg-green-500/30"
+                      )}
+                      title={isHidden ? "Click to show on website" : "Click to hide from website"}
+                    >
+                      {isHidden ? (
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                        </svg>
+                      ) : (
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                      )}
+                    </button>
+                  </td>
+                  {/* Variant Info */}
                   <td className="py-3 px-3">
                     <div className="flex items-center gap-3">
                       {variant.image && (
@@ -376,7 +419,7 @@ function VariantPricingSection({ product, variants, onVariantsUpdate }: VariantP
                         />
                       )}
                       <div>
-                        <p className="text-gray-1 font-medium">
+                        <p className={clsx("font-medium", isHidden ? "text-gray-5" : "text-gray-1")}>
                           {variant.value || variant.name}
                         </p>
                         {variant.sku && (
