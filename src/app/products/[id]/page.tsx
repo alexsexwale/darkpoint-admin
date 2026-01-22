@@ -51,6 +51,7 @@ interface ProductVariant {
   image?: string;
   stock?: number;
   inStock?: boolean;
+  isHidden?: boolean; // Hide variant from e-commerce website
 }
 
 interface AdminProduct {
@@ -120,23 +121,30 @@ function VariantPricingSection({ product, variants, onVariantsUpdate }: VariantP
   const [isSaving, setIsSaving] = useState(false);
   const [variantPrices, setVariantPrices] = useState<Record<string, number>>({});
   const [variantDisplayNames, setVariantDisplayNames] = useState<Record<string, string>>({});
+  const [variantHidden, setVariantHidden] = useState<Record<string, boolean>>({});
   const [variantGroupName, setVariantGroupName] = useState(product.variant_group_name || '');
   const [bulkMarkup, setBulkMarkup] = useState<number>(product.markup_percent || 150);
 
-  // Initialize variant prices and display names from current values
+  // Initialize variant prices, display names, and hidden state from current values
   useEffect(() => {
     const prices: Record<string, number> = {};
     const displayNames: Record<string, string> = {};
+    const hidden: Record<string, boolean> = {};
     variants.forEach(v => {
       if (v.id) {
         if (v.price) prices[v.id] = v.price;
         displayNames[v.id] = v.displayName || '';
+        hidden[v.id] = v.isHidden || false;
       }
     });
     setVariantPrices(prices);
     setVariantDisplayNames(displayNames);
+    setVariantHidden(hidden);
     setVariantGroupName(product.variant_group_name || '');
   }, [variants, product.variant_group_name]);
+
+  // Count visible variants
+  const visibleVariantsCount = variants.filter(v => !variantHidden[v.id]).length;
 
   // Apply bulk markup to all variants
   const applyBulkMarkup = () => {
@@ -151,15 +159,16 @@ function VariantPricingSection({ product, variants, onVariantsUpdate }: VariantP
     setVariantPrices(newPrices);
   };
 
-  // Save variant prices and display names
+  // Save variant prices, display names, and visibility
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      // Update variants with new prices and display names
+      // Update variants with new prices, display names, and hidden state
       const updatedVariants = variants.map(v => ({
         ...v,
         price: variantPrices[v.id] || v.price,
         displayName: variantDisplayNames[v.id] || v.displayName || '',
+        isHidden: variantHidden[v.id] || false,
       }));
 
       // Try to save with variant_group_name first
@@ -318,11 +327,22 @@ function VariantPricingSection({ product, variants, onVariantsUpdate }: VariantP
         </div>
       )}
 
+      {/* Visible variants info */}
+      {!isEditing && (
+        <div className="mb-3 text-xs text-gray-5">
+          {visibleVariantsCount} of {variants.length} variant{variants.length !== 1 ? 's' : ''} visible on website
+          {visibleVariantsCount === 1 && (
+            <span className="ml-2 text-main-1">(variant selector will be hidden)</span>
+          )}
+        </div>
+      )}
+
       {/* Variants Table */}
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-dark-4">
+              <th className="text-center py-2 px-3 text-gray-5 font-medium w-16">Show</th>
               <th className="text-left py-2 px-3 text-gray-5 font-medium">Variant</th>
               {isEditing && (
                 <th className="text-left py-2 px-3 text-gray-5 font-medium">Display Name</th>
