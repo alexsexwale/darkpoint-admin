@@ -80,9 +80,11 @@ export default function ProductsPage() {
   const [cjSearchQuery, setCJSearchQuery] = useState('');
   const [cjProducts, setCJProducts] = useState<any[]>([]);
   const [isSearchingCJ, setIsSearchingCJ] = useState(false);
+  const [isLoadingMoreCJ, setIsLoadingMoreCJ] = useState(false);
   const [importingProductId, setImportingProductId] = useState<string | null>(null);
   const [cjSearchSource, setCJSearchSource] = useState<'catalog' | 'my-products'>('catalog');
   const [importedCJProductIds, setImportedCJProductIds] = useState<Set<string>>(new Set());
+  const [cjPagination, setCJPagination] = useState<{ page: number; total: number; hasMore: boolean }>({ page: 1, total: 0, hasMore: false });
   
   // Per-product pricing overrides: { productId: { markup?: number, customPrice?: number } }
   const [productPricing, setProductPricing] = useState<Record<string, { markup?: number; customPrice?: number }>>({});
@@ -177,10 +179,16 @@ export default function ProductsPage() {
     fetchImportedCJProductIds();
   }, [fetchProducts, fetchImportedCJProductIds]);
 
-  const searchCJProducts = async () => {
+  const searchCJProducts = async (loadMore = false) => {
     // For catalog, query is required. For my-products, it's optional (can browse all)
     if (cjSearchSource === 'catalog' && !cjSearchQuery.trim()) return;
-    setIsSearchingCJ(true);
+    
+    if (loadMore) {
+      setIsLoadingMoreCJ(true);
+    } else {
+      setIsSearchingCJ(true);
+      setCJProducts([]); // Clear previous results for new search
+    }
     
     try {
       const params = new URLSearchParams();
@@ -188,6 +196,8 @@ export default function ProductsPage() {
         params.set('q', cjSearchQuery);
       }
       params.set('source', cjSearchSource);
+      params.set('page', loadMore ? String(cjPagination.page + 1) : '1');
+      params.set('pageSize', '50'); // Fetch 50 at a time
       
       const response = await fetch(`/api/products/search-cj?${params.toString()}`);
       const result = await response.json();
@@ -197,7 +207,21 @@ export default function ProductsPage() {
         const filteredProducts = (result.data || []).filter(
           (product: any) => !importedCJProductIds.has(product.id)
         );
-        setCJProducts(filteredProducts);
+        
+        if (loadMore) {
+          setCJProducts(prev => [...prev, ...filteredProducts]);
+        } else {
+          setCJProducts(filteredProducts);
+        }
+        
+        // Update pagination info
+        if (result.pagination) {
+          setCJPagination({
+            page: result.pagination.page,
+            total: result.pagination.total,
+            hasMore: result.pagination.hasMore,
+          });
+        }
       } else {
         console.error('CJ search error:', result.error);
       }
@@ -205,6 +229,7 @@ export default function ProductsPage() {
       console.error('CJ search error:', err);
     } finally {
       setIsSearchingCJ(false);
+      setIsLoadingMoreCJ(false);
     }
   };
 
@@ -714,11 +739,11 @@ export default function ProductsPage() {
                 }
                 value={cjSearchQuery}
                 onChange={(e) => setCJSearchQuery(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && searchCJProducts()}
+                onKeyDown={(e) => e.key === 'Enter' && searchCJProducts(false)}
                 leftIcon={<HiOutlineSearch className="w-4 h-4" />}
                 className="flex-1"
               />
-              <Button onClick={searchCJProducts} isLoading={isSearchingCJ}>
+              <Button onClick={() => searchCJProducts(false)} isLoading={isSearchingCJ}>
                 {cjSearchSource === 'my-products' && !cjSearchQuery.trim() ? 'Browse All' : 'Search'}
               </Button>
             </div>
@@ -726,7 +751,21 @@ export default function ProductsPage() {
 
           {/* CJ Products Results */}
           {cjProducts.length > 0 && (
-            <div className="max-h-[55vh] overflow-y-auto pr-2">
+            <div>
+              {/* Products count header */}
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm text-gray-5">
+                  Showing <span className="text-gray-1 font-medium">{cjProducts.length}</span>
+                  {cjPagination.total > 0 && (
+                    <> of <span className="text-gray-1 font-medium">{cjPagination.total}</span></>
+                  )} products
+                </p>
+                {cjPagination.hasMore && (
+                  <span className="text-xs text-main-1">More available</span>
+                )}
+              </div>
+              
+              <div className="max-h-[50vh] overflow-y-auto pr-2">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {cjProducts.map((product) => {
                   const pricing = calculatePricing(product.basePrice, product.id);
@@ -934,16 +973,34 @@ export default function ProductsPage() {
                   );
                 })}
               </div>
+              </div>
+              
+              {/* Load More Button */}
+              {cjPagination.hasMore && (
+                <div className="mt-4 text-center">
+                  <Button
+                    variant="secondary"
+                    onClick={() => searchCJProducts(true)}
+                    isLoading={isLoadingMoreCJ}
+                    disabled={isLoadingMoreCJ}
+                  >
+                    {isLoadingMoreCJ ? 'Loading...' : `Load More Products (${cjPagination.total - cjProducts.length} remaining)`}
+                  </Button>
+                </div>
+              )}
             </div>
           )}
 
-          {cjProducts.length === 0 && cjSearchQuery && !isSearchingCJ && (
+          {cjProducts.length === 0 && !isSearchingCJ && (cjSearchQuery || cjSearchSource === 'my-products') && (
             <p className="text-center text-gray-5 py-8">
-              No products found. Try a different search term.
+              {cjSearchSource === 'my-products' 
+                ? 'No products found in your CJ account. Add products to your CJ account first.'
+                : 'No products found. Try a different search term.'
+              }
             </p>
           )}
           
-          {!cjSearchQuery && !isSearchingCJ && (
+          {cjProducts.length === 0 && !cjSearchQuery && cjSearchSource === 'catalog' && !isSearchingCJ && (
             <div className="text-center py-8 text-gray-5">
               <p>Search for products in the CJ Dropshipping catalog above.</p>
               <p className="text-xs mt-2">Try searches like: &quot;gaming mouse&quot;, &quot;LED lights&quot;, &quot;phone accessories&quot;</p>

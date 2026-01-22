@@ -129,6 +129,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const query = searchParams.get('q') || '';
     const page = parseInt(searchParams.get('page') || '1');
+    const pageSize = parseInt(searchParams.get('pageSize') || '50'); // Increased default
     const source = searchParams.get('source') || 'catalog'; // 'catalog' or 'my-products'
 
     // For catalog search, query is required
@@ -136,21 +137,21 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Search query required' }, { status: 400 });
     }
 
-    let result: { success: boolean; data?: any[]; error?: string };
+    let result: { success: boolean; data?: any[]; total?: number; error?: string };
 
     if (source === 'my-products') {
-      // Search from user's added products
+      // Search from user's added products - use larger page size
       result = await cjDropshipping.getMyProducts({
         keyword: query || undefined,
         pageNum: page,
-        pageSize: 20,
+        pageSize: Math.min(pageSize, 100), // CJ API may have limits
       });
     } else {
       // Search from general CJ catalog
       result = await cjDropshipping.getProducts({
         keywords: query,
         pageNum: page,
-        pageSize: 20,
+        pageSize: Math.min(pageSize, 100),
       });
     }
 
@@ -241,6 +242,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data: transformedProducts,
+      pagination: {
+        page,
+        pageSize: Math.min(pageSize, 100),
+        total: result.total || transformedProducts.length,
+        hasMore: result.total ? (page * Math.min(pageSize, 100)) < result.total : false,
+      },
     });
   } catch (error) {
     console.error('CJ search error:', error);

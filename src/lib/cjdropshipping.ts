@@ -238,7 +238,7 @@ class CJDropshippingAPI {
     pageSize?: number;
     categoryId?: string;
     keywords?: string;
-  } = {}): Promise<{ success: boolean; data?: CJProduct[]; error?: string }> {
+  } = {}): Promise<{ success: boolean; data?: CJProduct[]; total?: number; error?: string }> {
     try {
       const response: AxiosResponse = await this.client.get('/v1/product/list', {
         params: {
@@ -250,10 +250,13 @@ class CJDropshippingAPI {
       });
 
       if (response.data.result || response.data.success) {
-        const list = response.data.data?.list || response.data.data || [];
+        const responseData = response.data.data;
+        const list = responseData?.list || responseData || [];
+        const total = responseData?.total || (Array.isArray(list) ? list.length : 0);
         return {
           success: true,
           data: Array.isArray(list) ? list : [],
+          total,
         };
       } else {
         return {
