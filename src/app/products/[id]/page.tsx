@@ -468,6 +468,11 @@ export default function ProductDetailPage() {
   const [isSavingPricing, setIsSavingPricing] = useState(false);
   const [currentExchangeRate, setCurrentExchangeRate] = useState<number | null>(null);
   
+  // Inline title edit state
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [titleForm, setTitleForm] = useState('');
+  const [isSavingTitle, setIsSavingTitle] = useState(false);
+  
   // Edit form state
   const [editForm, setEditForm] = useState({
     name: '',
@@ -606,6 +611,31 @@ export default function ProductDetailPage() {
       alert('Failed to save pricing');
     } finally {
       setIsSavingPricing(false);
+    }
+  };
+
+  const handleTitleSave = async () => {
+    if (!product || !titleForm.trim()) return;
+    setIsSavingTitle(true);
+    
+    try {
+      const { error } = await supabase
+        .from('admin_products')
+        .update({
+          name: titleForm.trim(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', product.id);
+      
+      if (error) throw error;
+      
+      await fetchProduct();
+      setIsEditingTitle(false);
+    } catch (err) {
+      console.error('Error saving title:', err);
+      alert('Failed to save title');
+    } finally {
+      setIsSavingTitle(false);
     }
   };
 
@@ -785,9 +815,69 @@ export default function ProductDetailPage() {
       <div className="bg-dark-2 rounded-xl border border-dark-4 p-6">
         {/* Title and ID */}
         <div className="mb-6">
-          <h1 className="text-2xl lg:text-3xl font-heading text-gray-1 leading-tight mb-2">
-            {product.name}
-          </h1>
+          {isEditingTitle ? (
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs text-gray-5 mb-1">Edit Product Title (This will display on the e-commerce website)</label>
+                <textarea
+                  value={titleForm}
+                  onChange={(e) => setTitleForm(e.target.value)}
+                  className="w-full px-4 py-3 bg-dark-3 border border-main-1 rounded-lg text-xl lg:text-2xl font-heading text-gray-1 focus:outline-none focus:ring-2 focus:ring-main-1 resize-none"
+                  rows={2}
+                  autoFocus
+                  placeholder="Enter product title..."
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleTitleSave}
+                  isLoading={isSavingTitle}
+                  disabled={!titleForm.trim() || titleForm.trim() === product.name}
+                >
+                  Save Title
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    setIsEditingTitle(false);
+                    setTitleForm(product.name);
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="group relative">
+              <div className="flex items-start gap-2">
+                <h1 className="text-2xl lg:text-3xl font-heading text-gray-1 leading-tight mb-2 flex-1">
+                  {product.name}
+                </h1>
+                <button
+                  onClick={() => {
+                    setTitleForm(product.name);
+                    setIsEditingTitle(true);
+                  }}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity p-2 hover:bg-dark-4 rounded-lg text-gray-5 hover:text-main-1"
+                  title="Edit title"
+                >
+                  <HiOutlinePencil className="w-5 h-5" />
+                </button>
+              </div>
+              <p className="text-xs text-gray-5 mb-1">
+                <span className="inline-flex items-center gap-1 cursor-pointer hover:text-main-1 transition-colors" onClick={() => {
+                  setTitleForm(product.name);
+                  setIsEditingTitle(true);
+                }}>
+                  <HiOutlinePencil className="w-3 h-3" />
+                  Click to edit title shown on website
+                </span>
+              </p>
+            </div>
+          )}
           <p className="text-sm text-gray-5">
             Product ID: <span className="font-mono text-gray-3">{product.id.slice(0, 8)}...</span>
           </p>
