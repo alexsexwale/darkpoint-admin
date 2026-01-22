@@ -43,6 +43,7 @@ interface ProductVariant {
   id: string;
   name: string;
   value?: string;
+  displayName?: string; // Custom display name for e-commerce website
   price?: number;
   priceUSD?: number;
   costZAR?: number;
@@ -68,6 +69,7 @@ interface AdminProduct {
   tags: string[];
   images: ProductImage[];
   variants: ProductVariant[];
+  variant_group_name?: string | null; // Custom name for variant options (e.g., "Wood Type" instead of "Options")
   weight: number;
   source_from: string;
   is_active: boolean;
@@ -117,18 +119,24 @@ function VariantPricingSection({ product, variants, onVariantsUpdate }: VariantP
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [variantPrices, setVariantPrices] = useState<Record<string, number>>({});
+  const [variantDisplayNames, setVariantDisplayNames] = useState<Record<string, string>>({});
+  const [variantGroupName, setVariantGroupName] = useState(product.variant_group_name || '');
   const [bulkMarkup, setBulkMarkup] = useState<number>(product.markup_percent || 150);
 
-  // Initialize variant prices from current values
+  // Initialize variant prices and display names from current values
   useEffect(() => {
     const prices: Record<string, number> = {};
+    const displayNames: Record<string, string> = {};
     variants.forEach(v => {
-      if (v.id && v.price) {
-        prices[v.id] = v.price;
+      if (v.id) {
+        if (v.price) prices[v.id] = v.price;
+        displayNames[v.id] = v.displayName || '';
       }
     });
     setVariantPrices(prices);
-  }, [variants]);
+    setVariantDisplayNames(displayNames);
+    setVariantGroupName(product.variant_group_name || '');
+  }, [variants, product.variant_group_name]);
 
   // Apply bulk markup to all variants
   const applyBulkMarkup = () => {
@@ -143,31 +151,48 @@ function VariantPricingSection({ product, variants, onVariantsUpdate }: VariantP
     setVariantPrices(newPrices);
   };
 
-  // Save variant prices
+  // Save variant prices and display names
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      // Update variants with new prices
+      // Update variants with new prices and display names
       const updatedVariants = variants.map(v => ({
         ...v,
         price: variantPrices[v.id] || v.price,
+        displayName: variantDisplayNames[v.id] || v.displayName || '',
       }));
 
-      const { error } = await supabase
+      // Try to save with variant_group_name first
+      let { error } = await supabase
         .from('admin_products')
         .update({
           variants: updatedVariants,
+          variant_group_name: variantGroupName || null,
           updated_at: new Date().toISOString(),
         })
         .eq('id', product.id);
+
+      // If the column doesn't exist, save without it
+      if (error && (error.message?.includes('variant_group_name') || error.code === '42703')) {
+        console.warn('variant_group_name column not found, saving without it. Run this SQL in Supabase: ALTER TABLE admin_products ADD COLUMN IF NOT EXISTS variant_group_name TEXT;');
+        const { error: fallbackError } = await supabase
+          .from('admin_products')
+          .update({
+            variants: updatedVariants,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', product.id);
+        error = fallbackError;
+      }
 
       if (error) throw error;
 
       await onVariantsUpdate();
       setIsEditing(false);
-    } catch (err) {
-      console.error('Error saving variant prices:', err);
-      alert('Failed to save variant prices');
+    } catch (err: unknown) {
+      console.error('Error saving variant data:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      alert(`Failed to save variant data: ${errorMessage}`);
     } finally {
       setIsSaving(false);
     }
@@ -236,6 +261,22 @@ function VariantPricingSection({ product, variants, onVariantsUpdate }: VariantP
         )}
       </div>
 
+      {/* Variant Group Name (when editing) */}
+      {isEditing && (
+        <div className="mb-4 p-4 bg-dark-4/50 border border-dark-4 rounded-lg">
+          <label className="block text-sm text-gray-3 mb-2">
+            Variant Option Name <span className="text-gray-5">(displayed on website, e.g., &quot;Wood Type&quot;, &quot;Style&quot;)</span>
+          </label>
+          <input
+            type="text"
+            value={variantGroupName}
+            onChange={(e) => setVariantGroupName(e.target.value)}
+            placeholder="Options"
+            className="w-full max-w-md px-3 py-2 bg-dark-3 border border-dark-4 rounded text-gray-1 focus:border-main-1 focus:outline-none"
+          />
+        </div>
+      )}
+
       {/* Bulk Markup Controls (when editing) */}
       {isEditing && (
         <div className="mb-4 p-4 bg-main-1/5 border border-main-1/20 rounded-lg">
@@ -283,6 +324,9 @@ function VariantPricingSection({ product, variants, onVariantsUpdate }: VariantP
           <thead>
             <tr className="border-b border-dark-4">
               <th className="text-left py-2 px-3 text-gray-5 font-medium">Variant</th>
+              {isEditing && (
+                <th className="text-left py-2 px-3 text-gray-5 font-medium">Display Name</th>
+              )}
               <th className="text-right py-2 px-3 text-gray-5 font-medium">Cost (ZAR)</th>
               <th className="text-right py-2 px-3 text-gray-5 font-medium">Sell Price</th>
               <th className="text-right py-2 px-3 text-gray-5 font-medium">Profit</th>
@@ -318,9 +362,26 @@ function VariantPricingSection({ product, variants, onVariantsUpdate }: VariantP
                         {variant.sku && (
                           <p className="text-xs text-gray-5 font-mono">{variant.sku}</p>
                         )}
+                        {!isEditing && variant.displayName && (
+                          <p className="text-xs text-main-1">→ {variant.displayName}</p>
+                        )}
                       </div>
                     </div>
                   </td>
+                  {isEditing && (
+                    <td className="py-3 px-3">
+                      <input
+                        type="text"
+                        value={variantDisplayNames[variant.id] || ''}
+                        onChange={(e) => setVariantDisplayNames(prev => ({
+                          ...prev,
+                          [variant.id]: e.target.value
+                        }))}
+                        placeholder={variant.value || variant.name}
+                        className="w-32 px-2 py-1 bg-dark-4 border border-dark-4 rounded text-gray-1 text-sm focus:border-main-1 focus:outline-none"
+                      />
+                    </td>
+                  )}
                   <td className="py-3 px-3 text-right">
                     <span className="text-red-400 font-mono">{formatZAR(costZAR)}</span>
                     {variant.priceUSD && (
