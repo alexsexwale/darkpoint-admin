@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/Button';
@@ -70,7 +70,8 @@ interface AdminProduct {
   tags: string[];
   images: ProductImage[];
   variants: ProductVariant[];
-  variant_group_name?: string | null; // Custom name for variant options (e.g., "Wood Type" instead of "Options")
+  variant_group_name?: string | null; // Legacy: Custom name for variant options
+  variant_dimension_names?: Record<string, string> | null; // Custom names for each dimension (e.g., {"Option": "Microphone", "Colour": "Colour"})
   weight: number;
   source_from: string;
   is_active: boolean;
@@ -116,6 +117,63 @@ interface VariantPricingSectionProps {
   onVariantsUpdate: () => Promise<void>;
 }
 
+// Color and size detection for dimension parsing
+const COLOR_NAMES = ['black', 'white', 'red', 'blue', 'green', 'orange', 'yellow', 'pink', 'purple', 'gray', 'grey', 'brown', 'navy', 'gold', 'silver', 'beige', 'cyan', 'teal', 'coral', 'khaki', 'rose', 'lime', 'indigo', 'violet', 'amber', 'emerald', 'sky', 'slate'];
+const SIZE_NAMES = ['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL', '2XL', '3XL', '4XL'];
+
+// Parse variant name to extract dimensions
+function parseVariantDimensions(variantName: string, productName: string): Record<string, string> {
+  let variantPart = variantName;
+  if (productName && variantPart.toLowerCase().startsWith(productName.toLowerCase())) {
+    variantPart = variantPart.slice(productName.length).trim();
+  }
+  
+  const parts = variantPart.split(/[\s_\-\/]+/).filter(p => p.length > 0);
+  const dimensions: Record<string, string> = {};
+  const otherParts: string[] = [];
+  
+  for (const part of parts) {
+    const lowerPart = part.toLowerCase();
+    
+    // Check for color
+    if (COLOR_NAMES.some(c => lowerPart === c || lowerPart.includes(c))) {
+      dimensions['Colour'] = part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+    }
+    // Check for size (but only multi-char sizes, not single letters)
+    else if (SIZE_NAMES.includes(part.toUpperCase()) && part.length > 1) {
+      dimensions['Size'] = part.toUpperCase();
+    }
+    // Collect other parts for Option dimension
+    else if (part.length > 0 && part.length <= 20) {
+      otherParts.push(part);
+    }
+  }
+  
+  // If we have other parts, create an Option dimension
+  if (otherParts.length > 0) {
+    dimensions['Option'] = otherParts.join(' ');
+  }
+  
+  return dimensions;
+}
+
+// Extract all dimensions from all variants
+function extractAllDimensions(variants: ProductVariant[], productName: string): Map<string, Set<string>> {
+  const dimensionMap = new Map<string, Set<string>>();
+  
+  for (const variant of variants) {
+    const dims = parseVariantDimensions(variant.name, productName);
+    for (const [key, value] of Object.entries(dims)) {
+      if (!dimensionMap.has(key)) {
+        dimensionMap.set(key, new Set());
+      }
+      dimensionMap.get(key)!.add(value);
+    }
+  }
+  
+  return dimensionMap;
+}
+
 function VariantPricingSection({ product, variants, onVariantsUpdate }: VariantPricingSectionProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -123,7 +181,23 @@ function VariantPricingSection({ product, variants, onVariantsUpdate }: VariantP
   const [variantDisplayNames, setVariantDisplayNames] = useState<Record<string, string>>({});
   const [variantHidden, setVariantHidden] = useState<Record<string, boolean>>({});
   const [variantGroupName, setVariantGroupName] = useState(product.variant_group_name || '');
+  const [dimensionNames, setDimensionNames] = useState<Record<string, string>>(product.variant_dimension_names || {});
   const [bulkMarkup, setBulkMarkup] = useState<number>(product.markup_percent || 150);
+  
+  // Detect dimensions from variant names
+  const detectedDimensions = useMemo(() => {
+    return extractAllDimensions(variants, product.name);
+  }, [variants, product.name]);
+  
+  // Sort dimensions: Colour first, then Size, then Option
+  const sortedDimensionKeys = useMemo(() => {
+    const keys = Array.from(detectedDimensions.keys());
+    const order: Record<string, number> = { 'Colour': 0, 'Size': 1, 'Option': 2 };
+    return keys.sort((a, b) => (order[a] ?? 99) - (order[b] ?? 99));
+  }, [detectedDimensions]);
+  
+  // Check if this is a multi-dimension product
+  const isMultiDimension = detectedDimensions.size > 1;
 
   // Initialize variant prices, display names, and hidden states from current values
   useEffect(() => {
@@ -141,7 +215,8 @@ function VariantPricingSection({ product, variants, onVariantsUpdate }: VariantP
     setVariantDisplayNames(displayNames);
     setVariantHidden(hidden);
     setVariantGroupName(product.variant_group_name || '');
-  }, [variants, product.variant_group_name]);
+    setDimensionNames(product.variant_dimension_names || {});
+  }, [variants, product.variant_group_name, product.variant_dimension_names]);
 
   // Count visible variants
   const visibleCount = variants.filter(v => !variantHidden[v.id]).length;
@@ -159,7 +234,7 @@ function VariantPricingSection({ product, variants, onVariantsUpdate }: VariantP
     setVariantPrices(newPrices);
   };
 
-  // Save variant prices, display names, and visibility
+  // Save variant prices, display names, visibility, and dimension names
   const handleSave = async () => {
     setIsSaving(true);
     try {
@@ -171,19 +246,27 @@ function VariantPricingSection({ product, variants, onVariantsUpdate }: VariantP
         isHidden: variantHidden[v.id] || false,
       }));
 
-      // Try to save with variant_group_name first
+      // Prepare dimension names (filter out empty values)
+      const cleanDimensionNames = Object.fromEntries(
+        Object.entries(dimensionNames).filter(([, v]) => v && v.trim().length > 0)
+      );
+
+      // Try to save with all fields first
       let { error } = await supabase
         .from('admin_products')
         .update({
           variants: updatedVariants,
           variant_group_name: variantGroupName || null,
+          variant_dimension_names: Object.keys(cleanDimensionNames).length > 0 ? cleanDimensionNames : null,
           updated_at: new Date().toISOString(),
         })
         .eq('id', product.id);
 
-      // If the column doesn't exist, save without it
-      if (error && (error.message?.includes('variant_group_name') || error.code === '42703')) {
-        console.warn('variant_group_name column not found, saving without it. Run this SQL in Supabase: ALTER TABLE admin_products ADD COLUMN IF NOT EXISTS variant_group_name TEXT;');
+      // If columns don't exist, save without them
+      if (error && (error.message?.includes('variant_group_name') || error.message?.includes('variant_dimension_names') || error.code === '42703')) {
+        console.warn('Some variant columns not found. Run this SQL in Supabase:\n' +
+          'ALTER TABLE admin_products ADD COLUMN IF NOT EXISTS variant_group_name TEXT;\n' +
+          'ALTER TABLE admin_products ADD COLUMN IF NOT EXISTS variant_dimension_names JSONB;');
         const { error: fallbackError } = await supabase
           .from('admin_products')
           .update({
@@ -270,19 +353,63 @@ function VariantPricingSection({ product, variants, onVariantsUpdate }: VariantP
         )}
       </div>
 
-      {/* Variant Group Name (when editing) */}
+      {/* Dimension Names (when editing) */}
       {isEditing && (
         <div className="mb-4 p-4 bg-dark-4/50 border border-dark-4 rounded-lg">
-          <label className="block text-sm text-gray-3 mb-2">
-            Variant Option Name <span className="text-gray-5">(displayed on website, e.g., &quot;Wood Type&quot;, &quot;Style&quot;)</span>
-          </label>
-          <input
-            type="text"
-            value={variantGroupName}
-            onChange={(e) => setVariantGroupName(e.target.value)}
-            placeholder="Options"
-            className="w-full max-w-md px-3 py-2 bg-dark-3 border border-dark-4 rounded text-gray-1 focus:border-main-1 focus:outline-none"
-          />
+          <h4 className="text-sm font-medium text-gray-2 mb-3">
+            Variant Dimension Names
+            <span className="text-gray-5 font-normal ml-2">(customize how variant options are labeled on the website)</span>
+          </h4>
+          
+          {isMultiDimension ? (
+            // Multi-dimension product - show each dimension
+            <div className="space-y-3">
+              {sortedDimensionKeys.map((dimKey) => {
+                const values = Array.from(detectedDimensions.get(dimKey) || []);
+                return (
+                  <div key={dimKey} className="flex items-center gap-4">
+                    <div className="w-32 text-sm text-gray-4">
+                      {dimKey}
+                      <span className="text-gray-6 text-xs ml-1">({values.length} values)</span>
+                    </div>
+                    <div className="flex-1 flex items-center gap-2">
+                      <span className="text-gray-5">→</span>
+                      <input
+                        type="text"
+                        value={dimensionNames[dimKey] || ''}
+                        onChange={(e) => setDimensionNames(prev => ({
+                          ...prev,
+                          [dimKey]: e.target.value
+                        }))}
+                        placeholder={dimKey}
+                        className="flex-1 max-w-xs px-3 py-2 bg-dark-3 border border-dark-4 rounded text-gray-1 focus:border-main-1 focus:outline-none text-sm"
+                      />
+                    </div>
+                    <div className="text-xs text-gray-5 max-w-xs truncate">
+                      e.g., {values.slice(0, 3).join(', ')}{values.length > 3 ? '...' : ''}
+                    </div>
+                  </div>
+                );
+              })}
+              <p className="text-xs text-gray-5 mt-2">
+                💡 These names will appear as section headers on the product page (e.g., &quot;COLOUR&quot;, &quot;MICROPHONE TYPE&quot;)
+              </p>
+            </div>
+          ) : (
+            // Single dimension product - show simple input
+            <div>
+              <label className="block text-sm text-gray-3 mb-2">
+                Variant Option Name <span className="text-gray-5">(e.g., &quot;Wood Type&quot;, &quot;Style&quot;)</span>
+              </label>
+              <input
+                type="text"
+                value={variantGroupName}
+                onChange={(e) => setVariantGroupName(e.target.value)}
+                placeholder="Options"
+                className="w-full max-w-md px-3 py-2 bg-dark-3 border border-dark-4 rounded text-gray-1 focus:border-main-1 focus:outline-none"
+              />
+            </div>
+          )}
         </div>
       )}
 
