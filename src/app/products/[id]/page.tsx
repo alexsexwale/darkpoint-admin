@@ -123,6 +123,8 @@ const SIZE_NAMES = ['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL', '2XL', '3XL
 
 // Parse variant name to extract dimensions
 function parseVariantDimensions(variantName: string, productName: string): Record<string, string> {
+  if (!variantName) return {};
+  
   let variantPart = variantName;
   if (productName && variantPart.toLowerCase().startsWith(productName.toLowerCase())) {
     variantPart = variantPart.slice(productName.length).trim();
@@ -161,8 +163,11 @@ function parseVariantDimensions(variantName: string, productName: string): Recor
 function extractAllDimensions(variants: ProductVariant[], productName: string): Map<string, Set<string>> {
   const dimensionMap = new Map<string, Set<string>>();
   
+  if (!variants || variants.length === 0) return dimensionMap;
+  
   for (const variant of variants) {
-    const dims = parseVariantDimensions(variant.name, productName);
+    if (!variant?.name) continue;
+    const dims = parseVariantDimensions(variant.name, productName || '');
     for (const [key, value] of Object.entries(dims)) {
       if (!dimensionMap.has(key)) {
         dimensionMap.set(key, new Set());
