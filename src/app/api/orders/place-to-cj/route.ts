@@ -50,16 +50,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Order not found' }, { status: 404 });
     }
 
-    // Check if already placed
+    // Check if already placed (allow retry when previous attempt failed)
     const { data: existingCJOrder } = await supabase
       .from('cj_orders')
-      .select('id')
+      .select('id, cj_status')
       .eq('order_id', orderId)
       .single();
 
-    if (existingCJOrder) {
+    if (existingCJOrder && existingCJOrder.cj_status !== 'failed') {
       return NextResponse.json({ success: false, error: 'Order already placed to CJ' }, { status: 400 });
     }
+    const isRetry = existingCJOrder?.cj_status === 'failed';
 
     // Check payment status
     if (order.payment_status !== 'paid') {
@@ -163,16 +164,23 @@ export async function POST(request: NextRequest) {
     });
 
     if (!cjResult.success) {
-      // Log the error but still create a tracking record
+      // Log the error and create or update CJ order record with error
       console.error('CJ order placement failed:', cjResult.error);
-      
-      // Create CJ order record with error
-      await supabase.from('cj_orders').insert({
-        order_id: orderId,
-        cj_status: 'failed',
-        error_message: cjResult.error,
-        created_at: new Date().toISOString(),
-      });
+
+      if (isRetry && existingCJOrder?.id) {
+        await supabase.from('cj_orders').update({
+          cj_status: 'failed',
+          error_message: cjResult.error,
+          last_synced_at: new Date().toISOString(),
+        }).eq('id', existingCJOrder.id);
+      } else {
+        await supabase.from('cj_orders').insert({
+          order_id: orderId,
+          cj_status: 'failed',
+          error_message: cjResult.error,
+          created_at: new Date().toISOString(),
+        });
+      }
 
       // Create failure notification
       await createNotification(supabase, {
@@ -187,20 +195,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: cjResult.error }, { status: 500 });
     }
 
-    // Create CJ order record
-    const { error: insertError } = await supabase.from('cj_orders').insert({
-      order_id: orderId,
+    const placedAt = new Date().toISOString();
+    const cjRecord = {
       cj_order_id: cjResult.data?.orderId,
       cj_order_number: cjResult.data?.orderNumber,
       cj_status: cjResult.data?.orderStatus || 'Created',
       cj_tracking_number: cjResult.data?.trackingNumber,
       cj_logistic_name: cjResult.data?.logisticName,
-      placed_at: new Date().toISOString(),
-      last_synced_at: new Date().toISOString(),
-    });
+      error_message: null,
+      placed_at: placedAt,
+      last_synced_at: placedAt,
+    };
 
-    if (insertError) {
-      console.error('Error saving CJ order record:', insertError);
+    if (isRetry && existingCJOrder?.id) {
+      const { error: updateError } = await supabase.from('cj_orders').update(cjRecord).eq('id', existingCJOrder.id);
+      if (updateError) console.error('Error updating CJ order record:', updateError);
+    } else {
+      const { error: insertError } = await supabase.from('cj_orders').insert({
+        order_id: orderId,
+        ...cjRecord,
+        created_at: placedAt,
+      });
+      if (insertError) console.error('Error saving CJ order record:', insertError);
     }
 
     // Update main order status to processing

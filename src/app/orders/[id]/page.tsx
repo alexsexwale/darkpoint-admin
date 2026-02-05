@@ -245,7 +245,8 @@ export default function OrderDetailPage() {
   }
 
   const cjOrder = order.cj_orders?.[0];
-  const canPlaceToCJ = order.payment_status === 'paid' && !cjOrder;
+  const cjFailed = cjOrder?.cj_status === 'failed';
+  const canPlaceToCJ = order.payment_status === 'paid' && (!cjOrder || cjFailed);
 
   return (
     <div className="space-y-6">
@@ -418,20 +419,36 @@ export default function OrderDetailPage() {
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-gray-5">Status</span>
-                  <Badge variant="success">{cjOrder.cj_status || 'Placed'}</Badge>
+                  <Badge variant={cjFailed ? 'danger' : 'success'}>{cjOrder.cj_status || 'Placed'}</Badge>
                 </div>
+                {cjFailed && cjOrder.error_message && (
+                  <p className="text-sm text-red-400/90 bg-red-500/10 rounded px-2 py-1.5" title={cjOrder.error_message}>
+                    {cjOrder.error_message}
+                  </p>
+                )}
                 {cjOrder.cj_tracking_number && (
                   <div className="flex items-center justify-between">
                     <span className="text-gray-5">Tracking</span>
                     <span className="text-main-1">{cjOrder.cj_tracking_number}</span>
                   </div>
                 )}
-                {cjOrder.placed_at && (
+                {cjOrder.placed_at && !cjFailed && (
                   <div className="flex items-center justify-between">
                     <span className="text-gray-5">Placed At</span>
                     <span className="text-gray-1 text-sm">
                       {format(new Date(cjOrder.placed_at), 'MMM d, HH:mm')}
                     </span>
+                  </div>
+                )}
+                {canPlaceToCJ && (
+                  <div className="pt-2">
+                    <Button
+                      size="sm"
+                      onClick={() => setShowCJConfirm(true)}
+                      leftIcon={<HiOutlineTruck className="w-4 h-4" />}
+                    >
+                      {cjFailed ? 'Retry Place Order' : 'Place Order'}
+                    </Button>
                   </div>
                 )}
               </div>

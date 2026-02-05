@@ -67,6 +67,7 @@ export interface CJOrder {
   cj_order_id: string | null;
   cj_status: string | null;
   cj_tracking_number: string | null;
+  error_message: string | null;
   placed_at: string | null;
   last_synced_at: string | null;
 }
