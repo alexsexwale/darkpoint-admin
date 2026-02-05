@@ -119,18 +119,15 @@ export async function POST(request: NextRequest) {
       'MZ': 'MZ',
     };
 
-    // Get country code - case insensitive search with fallback
-    const shippingCountry = (order.shipping_country || '').trim();
-    let countryCode = countryCodeMap[shippingCountry] || countryCodeMap[shippingCountry.toLowerCase()];
-    
-    // If still not found, check if it's already a 2-letter code
-    if (!countryCode && shippingCountry.length === 2) {
-      countryCode = shippingCountry.toUpperCase();
+    // Get country code - use shipping_country or fall back to billing_country; never send empty
+    const rawCountry = (order.shipping_country ?? order.billing_country ?? '').trim();
+    let countryCode = countryCodeMap[rawCountry] || countryCodeMap[rawCountry.toLowerCase()];
+
+    if (!countryCode && rawCountry.length === 2) {
+      countryCode = rawCountry.toUpperCase();
     }
-    
-    // Default to ZA if nothing found
-    if (!countryCode) {
-      console.warn(`Unknown country: "${shippingCountry}", defaulting to ZA`);
+    if (!countryCode || countryCode.length !== 2) {
+      console.warn(`Unknown or missing country: "${rawCountry}", defaulting to ZA`);
       countryCode = 'ZA';
     }
 
@@ -219,11 +216,11 @@ export async function POST(request: NextRequest) {
       message: `Order #${order.order_number} has been successfully placed with CJ Dropshipping`,
       icon: 'HiOutlineCheckCircle',
       link: `/orders/${orderId}`,
-      data: { 
+        data: { 
         orderId, 
         orderNumber: order.order_number, 
         cjOrderId: cjResult.data?.orderId,
-        amount: order.total_amount,
+        amount: order.total,
       },
     });
 

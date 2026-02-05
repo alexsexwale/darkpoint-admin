@@ -145,7 +145,7 @@ export function ConfirmDialog({
   const variantColors = {
     danger: 'bg-red-600 hover:bg-red-700',
     warning: 'bg-amber-600 hover:bg-amber-700',
-    info: 'bg-blue-600 hover:bg-blue-700',
+    info: 'bg-main-1 text-white hover:bg-main-1/90 hover:shadow-[0_0_20px_rgba(224,136,33,0.4)]',
   };
 
   return (
