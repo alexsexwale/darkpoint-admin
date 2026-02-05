@@ -121,8 +121,8 @@ export async function POST(request: NextRequest) {
     };
 
     // Get country code - use shipping_country or fall back to billing_country; never send empty
-    const rawCountry = (order.shipping_country ?? order.billing_country ?? '').trim();
-    let countryCode = countryCodeMap[rawCountry] || countryCodeMap[rawCountry.toLowerCase()];
+    const rawCountry = String(order.shipping_country ?? order.billing_country ?? '').trim();
+    let countryCode: string = countryCodeMap[rawCountry] || countryCodeMap[rawCountry.toLowerCase()];
 
     if (!countryCode && rawCountry.length === 2) {
       countryCode = rawCountry.toUpperCase();
@@ -131,6 +131,8 @@ export async function POST(request: NextRequest) {
       console.warn(`Unknown or missing country: "${rawCountry}", defaulting to ZA`);
       countryCode = 'ZA';
     }
+    // Final guarantee for CJ API: never pass empty
+    const safeCountryCode = (countryCode && countryCode.length === 2) ? countryCode : 'ZA';
 
     // Validate required shipping fields
     const shippingName = (order.shipping_name || '').trim();
@@ -147,11 +149,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Shipping address is required' }, { status: 400 });
     }
 
-    // Create order with CJ
+    // Create order with CJ (use safeCountryCode so CJ never receives empty)
     const cjResult = await cjDropshipping.createOrder({
       orderNumber: order.order_number,
       shippingAddress: {
-        countryCode,
+        countryCode: safeCountryCode,
         province: (order.shipping_province || shippingCity).trim(), // Fallback to city if province is empty
         city: shippingCity,
         address: shippingAddress,

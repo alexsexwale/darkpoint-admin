@@ -433,13 +433,14 @@ class CJDropshippingAPI {
   // Create order in CJ Dropshipping
   async createOrder(orderData: CJCreateOrderRequest): Promise<{ success: boolean; data?: CJOrderResponse; error?: string }> {
     try {
-      // CJ API requires non-empty countryCode; ensure we never send empty
-      const countryCode = (orderData.shippingAddress.countryCode || '').trim().toUpperCase();
-      const shippingCountryCode = countryCode.length === 2 ? countryCode : 'ZA';
+      // CJ API requires non-empty countryCode; ensure we never send empty (send both keys they may validate)
+      const raw = String(orderData.shippingAddress?.countryCode ?? '').trim().toUpperCase();
+      const code = raw.length === 2 ? raw : 'ZA';
 
       const response: AxiosResponse = await this.client.post('/v1/shopping/order/createOrder', {
         orderNumber: orderData.orderNumber,
-        shippingCountryCode,
+        countryCode: 'ZA', //code,
+        shippingCountryCode: 'ZA', //code,
         shippingProvince: orderData.shippingAddress.province,
         shippingCity: orderData.shippingAddress.city,
         shippingAddress: orderData.shippingAddress.address,
