@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
 
-/**
- * Cron: delete orders that are still pending (status + payment) and older than 15 minutes.
- * Vercel Cron calls this every 15 minutes when CRON_SECRET is set.
- */
+
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
