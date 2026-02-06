@@ -62,7 +62,7 @@ export default function OrderDetailPage() {
   const [cjShippingError, setCjShippingError] = useState<string | null>(null);
   const [selectedCjLogistic, setSelectedCjLogistic] = useState<CJShippingOption | null>(null);
   const [cjOrderTotalZar, setCjOrderTotalZar] = useState<number>(0);
-  const [cjProductCostUsd, setCjProductCostUsd] = useState<number | null>(null);
+  const [cjProductCostZar, setCjProductCostZar] = useState<number | null>(null);
   const [usdZarRate, setUsdZarRate] = useState<number>(18.5);
   const [exchangeRateLoading, setExchangeRateLoading] = useState(false);
   
@@ -89,7 +89,7 @@ export default function OrderDetailPage() {
       }
       setCjShippingOptions(json.data ?? []);
       setCjOrderTotalZar(Number(json.orderTotalZar) || 0);
-      setCjProductCostUsd(json.cjProductCostUsd != null ? Number(json.cjProductCostUsd) : null);
+      setCjProductCostZar(json.cjProductCostZar != null ? Number(json.cjProductCostZar) : null);
       if (!json.data?.length) setSelectedCjLogistic(null);
     } catch (err) {
       setCjShippingError(err instanceof Error ? err.message : 'Failed to load shipping options');
@@ -127,7 +127,7 @@ export default function OrderDetailPage() {
     setCjShippingError(null);
     setCjShippingOptions([]);
     setCjOrderTotalZar(0);
-    setCjProductCostUsd(null);
+    setCjProductCostZar(null);
   }, []);
 
   const fetchOrder = async () => {
@@ -780,10 +780,10 @@ export default function OrderDetailPage() {
                 Rate: 1 USD = R {usdZarRate.toFixed(2)} ZAR
                 {exchangeRateLoading && <span className="ml-2 text-gray-5">(updating…)</span>}
               </p>
-              {cjProductCostUsd != null && (
+              {cjProductCostZar != null && (
                 <div className="flex justify-between text-gray-1">
                   <span>CJ product cost</span>
-                  <span>${cjProductCostUsd.toFixed(2)} USD ({formatCurrency(cjProductCostUsd * usdZarRate)} ZAR)</span>
+                  <span>{formatCurrency(cjProductCostZar)} ZAR (${(cjProductCostZar / usdZarRate).toFixed(2)} USD)</span>
                 </div>
               )}
               {selectedCjLogistic && (
@@ -797,8 +797,8 @@ export default function OrderDetailPage() {
                   <div className="flex justify-between font-medium text-gray-1 pt-1 border-t border-dark-4">
                     <span>Your total cost (CJ)</span>
                     <span>
-                      {cjProductCostUsd != null
-                        ? `$${(cjProductCostUsd + selectedCjLogistic.logisticPrice).toFixed(2)} USD (${formatCurrency((cjProductCostUsd + selectedCjLogistic.logisticPrice) * usdZarRate)} ZAR)`
+                      {cjProductCostZar != null
+                        ? `${formatCurrency(cjProductCostZar + selectedCjLogistic.logisticPrice * usdZarRate)} ZAR ($${(cjProductCostZar / usdZarRate + selectedCjLogistic.logisticPrice).toFixed(2)} USD)`
                         : `$${Number(selectedCjLogistic.logisticPrice).toFixed(2)} USD (${formatCurrency(selectedCjLogistic.logisticPrice * usdZarRate)} ZAR)`}
                     </span>
                   </div>
@@ -809,7 +809,7 @@ export default function OrderDetailPage() {
                   <div className="flex justify-between font-medium text-green-400 pt-1 border-t border-dark-4">
                     <span>Your profit</span>
                     <span>
-                      {formatCurrency((cjOrderTotalZar || order.total) - (cjProductCostUsd != null ? (cjProductCostUsd + selectedCjLogistic.logisticPrice) * usdZarRate : selectedCjLogistic.logisticPrice * usdZarRate))}
+                      {formatCurrency((cjOrderTotalZar || order.total) - (cjProductCostZar != null ? cjProductCostZar + selectedCjLogistic.logisticPrice * usdZarRate : selectedCjLogistic.logisticPrice * usdZarRate))}
                     </span>
                   </div>
                 </>

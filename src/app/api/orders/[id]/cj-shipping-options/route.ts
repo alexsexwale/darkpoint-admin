@@ -60,7 +60,8 @@ export async function GET(
     if (byIdRows) for (const p of byIdRows) { if (p.base_price != null) costById.set(p.id, Number(p.base_price)); }
     if (byCjIdRows) for (const p of byCjIdRows) { if (p.cj_product_id && p.base_price != null) costById.set(p.cj_product_id, Number(p.base_price)); }
 
-    let cjProductCostUsd: number | null = null;
+    // base_price in admin_products is stored in ZAR (cost price), not USD
+    let cjProductCostZar: number | null = null;
     let sum = 0;
     for (const item of items) {
       const cost = costById.get(item.product_id) ?? null;
@@ -70,7 +71,7 @@ export async function GET(
       }
       sum += cost * item.quantity;
     }
-    if (sum >= 0) cjProductCostUsd = sum;
+    if (sum >= 0) cjProductCostZar = sum;
 
     const products = items.map((item) => ({
       vid: item.variant_id || item.product_id,
@@ -95,7 +96,7 @@ export async function GET(
       success: true,
       data: result.data ?? [],
       orderTotalZar,
-      cjProductCostUsd: cjProductCostUsd ?? null,
+      cjProductCostZar: cjProductCostZar ?? null,
     });
   } catch (error) {
     console.error('CJ shipping options error:', error);
