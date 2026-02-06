@@ -76,12 +76,14 @@ export default function AnalyticsPage() {
         // Fallback: manual calculation
         const { data: orders } = await supabase
           .from('orders')
-          .select('created_at, total, payment_status')
+          .select('created_at, total, payment_status, status')
           .gte('created_at', startDate)
           .lte('created_at', endDate);
 
         if (orders) {
           const grouped = orders.reduce((acc, order) => {
+            // Exclude orders that are both pending (status) and pending (payment)
+            if (order.status === 'pending' && order.payment_status === 'pending') return acc;
             const date = format(new Date(order.created_at), 'yyyy-MM-dd');
             if (!acc[date]) {
               acc[date] = { revenue: 0, orders: 0 };
@@ -173,11 +175,12 @@ export default function AnalyticsPage() {
       // Fetch overall stats
       const { data: statsData } = await supabase.rpc('get_admin_dashboard_stats');
       if (statsData && statsData[0]) {
-        // Also fetch unique customer count
+        // Unique customer count (exclude orders that are both pending status and pending payment)
         const { count: customerCount } = await supabase
           .from('orders')
           .select('billing_email', { count: 'exact', head: true })
-          .not('billing_email', 'is', null);
+          .not('billing_email', 'is', null)
+          .or('status.neq.pending,payment_status.neq.pending');
         
         setStats({
           totalRevenue: Number(statsData[0].total_revenue) || 0,

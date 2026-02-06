@@ -71,10 +71,14 @@ export default function CustomerDetailPage() {
 
       setOrders(ordersData);
 
-      // Build customer data from orders
-      const firstOrder = ordersData[ordersData.length - 1];
+      // Exclude orders that are both pending (status) and pending (payment) from stats
+      const isPendingUnpaid = (o: Order) => o.status === 'pending' && o.payment_status === 'pending';
+      const settledOrders = ordersData.filter(o => !isPendingUnpaid(o));
+
+      const totalSpent = settledOrders.reduce((sum, o) => sum + (o.total || 0), 0);
+      const firstSettled = settledOrders.length > 0 ? settledOrders[settledOrders.length - 1] : null;
+      const lastSettled = settledOrders.length > 0 ? settledOrders[0] : null;
       const lastOrder = ordersData[0];
-      const totalSpent = ordersData.reduce((sum, o) => sum + (o.total || 0), 0);
 
       setCustomer({
         email: customerEmail,
@@ -82,11 +86,11 @@ export default function CustomerDetailPage() {
         phone: lastOrder.shipping_phone || lastOrder.billing_phone || null,
         city: lastOrder.shipping_city || lastOrder.billing_city || null,
         country: lastOrder.shipping_country || lastOrder.billing_country || null,
-        totalOrders: ordersData.length,
+        totalOrders: settledOrders.length,
         totalSpent,
-        firstOrderDate: firstOrder.created_at,
-        lastOrderDate: lastOrder.created_at,
-        avgOrderValue: totalSpent / ordersData.length,
+        firstOrderDate: firstSettled?.created_at ?? lastOrder.created_at,
+        lastOrderDate: lastSettled?.created_at ?? lastOrder.created_at,
+        avgOrderValue: settledOrders.length > 0 ? totalSpent / settledOrders.length : 0,
       });
 
       // Check if customer has a linked member account

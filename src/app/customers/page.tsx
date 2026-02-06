@@ -65,7 +65,11 @@ export default function CustomersPage() {
       // Aggregate orders by customer email
       const customerMap = new Map<string, Customer>();
 
+      // Exclude orders that are both pending (status) and pending (payment)
+      const isPendingUnpaid = (o: Order) => o.status === 'pending' && o.payment_status === 'pending';
+
       (ordersData || []).forEach((order: Order) => {
+        if (isPendingUnpaid(order)) return;
         const email = order.billing_email;
         if (!email) return;
 
@@ -87,7 +91,7 @@ export default function CustomersPage() {
         const customer = customerMap.get(email)!;
         customer.totalOrders += 1;
         customer.totalSpent += order.total || 0;
-        
+
         // Track first and last order dates
         if (new Date(order.created_at) < new Date(customer.firstOrderDate)) {
           customer.firstOrderDate = order.created_at;

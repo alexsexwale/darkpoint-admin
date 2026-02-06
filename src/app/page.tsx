@@ -91,11 +91,12 @@ export default function DashboardPage() {
         // Fallback to manual calculation if function doesn't exist
         await fetchStatsFallback();
       } else if (statsData && statsData[0]) {
-        // Also fetch unique customer count
+        // Unique customer count (exclude orders that are both pending status and pending payment)
         const { count: customerCount } = await supabase
           .from('orders')
           .select('billing_email', { count: 'exact', head: true })
-          .not('billing_email', 'is', null);
+          .not('billing_email', 'is', null)
+          .or('status.neq.pending,payment_status.neq.pending');
         
         setStats({
           totalRevenue: Number(statsData[0].total_revenue) || 0,
@@ -148,31 +149,36 @@ export default function DashboardPage() {
     const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
     const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
 
+    // Exclude orders that are both pending (status) and pending (payment)
+    const isPendingUnpaid = (o: { status: string; payment_status: string }) =>
+      o.status === 'pending' && o.payment_status === 'pending';
+    const settledOrders = orders.filter(o => !isPendingUnpaid(o));
+
     const paidOrders = orders.filter(o => o.payment_status === 'paid');
     const pendingOrders = orders.filter(o => o.status === 'pending');
-    
-    // Count unique customers by billing email
-    const uniqueEmails = new Set(orders.map(o => o.billing_email).filter(Boolean));
+
+    // Count unique customers by billing email (from settled orders only)
+    const uniqueEmails = new Set(settledOrders.map(o => o.billing_email).filter(Boolean));
     const totalCustomers = uniqueEmails.size;
 
     setStats({
       totalRevenue: paidOrders.reduce((sum, o) => sum + (o.total || 0), 0),
-      totalOrders: orders.length,
+      totalOrders: settledOrders.length,
       totalMembers,
       totalCustomers,
       pendingOrders: pendingOrders.length,
       todayRevenue: paidOrders
         .filter(o => new Date(o.created_at) >= today)
         .reduce((sum, o) => sum + (o.total || 0), 0),
-      todayOrders: orders.filter(o => new Date(o.created_at) >= today).length,
+      todayOrders: settledOrders.filter(o => new Date(o.created_at) >= today).length,
       weekRevenue: paidOrders
         .filter(o => new Date(o.created_at) >= weekAgo)
         .reduce((sum, o) => sum + (o.total || 0), 0),
-      weekOrders: orders.filter(o => new Date(o.created_at) >= weekAgo).length,
+      weekOrders: settledOrders.filter(o => new Date(o.created_at) >= weekAgo).length,
       monthRevenue: paidOrders
         .filter(o => new Date(o.created_at) >= monthAgo)
         .reduce((sum, o) => sum + (o.total || 0), 0),
-      monthOrders: orders.filter(o => new Date(o.created_at) >= monthAgo).length,
+      monthOrders: settledOrders.filter(o => new Date(o.created_at) >= monthAgo).length,
     });
   };
 
