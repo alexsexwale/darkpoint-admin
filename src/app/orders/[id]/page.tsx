@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { 
@@ -9,8 +9,7 @@ import {
   HiOutlineClipboardCopy,
   HiOutlineExternalLink,
   HiOutlinePencil,
-  HiOutlineCheck,
-  HiOutlineX,
+  HiOutlineRefresh,
 } from 'react-icons/hi';
 import { 
   Card, 
@@ -25,11 +24,12 @@ import {
   OrderStatusBadge,
   PaymentStatusBadge,
   Modal,
-  ConfirmDialog,
 } from '@/components/ui';
 import { supabase } from '@/lib/supabase';
 import { format } from 'date-fns';
 import type { Order, OrderStatus, CJOrder } from '@/types';
+
+type CJShippingOption = { logisticName: string; logisticPrice: number; logisticTime: string };
 
 const ORDER_STATUS_OPTIONS: Array<{ value: OrderStatus; label: string }> = [
   { value: 'pending', label: 'Pending' },
@@ -55,6 +55,12 @@ export default function OrderDetailPage() {
   const [showTrackingModal, setShowTrackingModal] = useState(false);
   const [showNotesModal, setShowNotesModal] = useState(false);
   const [showCJConfirm, setShowCJConfirm] = useState(false);
+
+  // CJ Place Order modal: shipping options and selection
+  const [cjShippingOptions, setCjShippingOptions] = useState<CJShippingOption[]>([]);
+  const [cjShippingLoading, setCjShippingLoading] = useState(false);
+  const [cjShippingError, setCjShippingError] = useState<string | null>(null);
+  const [selectedCjLogistic, setSelectedCjLogistic] = useState<CJShippingOption | null>(null);
   
   const [newStatus, setNewStatus] = useState<OrderStatus>('pending');
   const [trackingNumber, setTrackingNumber] = useState('');
@@ -64,6 +70,39 @@ export default function OrderDetailPage() {
   useEffect(() => {
     fetchOrder();
   }, [orderId]);
+
+  const fetchCjShippingOptions = useCallback(async () => {
+    if (!orderId) return;
+    setCjShippingLoading(true);
+    setCjShippingError(null);
+    try {
+      const res = await fetch(`/api/orders/${orderId}/cj-shipping-options`);
+      const json = await res.json();
+      if (!res.ok) {
+        setCjShippingError(json.error || 'Failed to load shipping options');
+        setCjShippingOptions([]);
+        return;
+      }
+      setCjShippingOptions(json.data ?? []);
+      if (!json.data?.length) setSelectedCjLogistic(null);
+    } catch (err) {
+      setCjShippingError(err instanceof Error ? err.message : 'Failed to load shipping options');
+      setCjShippingOptions([]);
+    } finally {
+      setCjShippingLoading(false);
+    }
+  }, [orderId]);
+
+  useEffect(() => {
+    if (showCJConfirm && orderId) fetchCjShippingOptions();
+  }, [showCJConfirm, orderId, fetchCjShippingOptions]);
+
+  const closeCjModal = useCallback(() => {
+    setShowCJConfirm(false);
+    setSelectedCjLogistic(null);
+    setCjShippingError(null);
+    setCjShippingOptions([]);
+  }, []);
 
   const fetchOrder = async () => {
     setIsLoading(true);
@@ -174,21 +213,18 @@ export default function OrderDetailPage() {
   const placeToCJDropshipping = async () => {
     if (!order) return;
     setIsPlacingToCJ(true);
-    
     try {
-      // Call the CJ order placement API
+      const body: { orderId: string; logisticName?: string } = { orderId: order.id };
+      if (selectedCjLogistic?.logisticName) body.logisticName = selectedCjLogistic.logisticName;
       const response = await fetch('/api/orders/place-to-cj', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: order.id }),
+        body: JSON.stringify(body),
       });
-      
       const result = await response.json();
-      
       if (result.success) {
-        // Refresh order data
         await fetchOrder();
-        setShowCJConfirm(false);
+        closeCjModal();
       } else {
         console.error('Failed to place order to CJ:', result.error);
         alert(`Failed to place order: ${result.error}`);
@@ -644,17 +680,99 @@ export default function OrderDetailPage() {
         </div>
       </Modal>
 
-      {/* CJ Confirm Dialog */}
-      <ConfirmDialog
+      {/* Place Order to CJ Modal with shipping selection */}
+      <Modal
         isOpen={showCJConfirm}
-        onClose={() => setShowCJConfirm(false)}
-        onConfirm={placeToCJDropshipping}
+        onClose={closeCjModal}
         title="Place Order to CJ Dropshipping"
-        message="This will create an order with CJ Dropshipping for fulfillment. Make sure the payment has been received."
-        confirmText="Place Order"
-        variant="info"
-        isLoading={isPlacingToCJ}
-      />
+        size="md"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-5">
+            This will create an order with CJ Dropshipping for fulfillment. Select a shipping method and confirm. Make sure the payment has been received.
+          </p>
+
+          {cjShippingLoading && (
+            <div className="flex items-center gap-3 py-4 text-gray-5">
+              <span className="inline-block h-5 w-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              Loading shipping options…
+            </div>
+          )}
+
+          {!cjShippingLoading && cjShippingError && (
+            <div className="space-y-3 rounded-lg bg-red-500/10 border border-red-500/20 p-3">
+              <p className="text-sm text-red-400">{cjShippingError}</p>
+              <div className="flex gap-2">
+                <Button size="sm" variant="secondary" leftIcon={<HiOutlineRefresh className="w-4 h-4" />} onClick={fetchCjShippingOptions}>
+                  Retry
+                </Button>
+                <span className="text-xs text-gray-5 self-center">Or place without selecting a method (CJ may choose default).</span>
+              </div>
+            </div>
+          )}
+
+          {!cjShippingLoading && !cjShippingError && cjShippingOptions.length > 0 && (
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-gray-1">Shipping method</p>
+              <div className="space-y-2 max-h-48 overflow-y-auto border border-dark-4 rounded-lg p-2">
+                {cjShippingOptions.map((opt) => (
+                  <label
+                    key={opt.logisticName}
+                    className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer border transition-colors ${selectedCjLogistic?.logisticName === opt.logisticName ? 'bg-main-1/10 border-main-1/40' : 'bg-dark-3 border-transparent hover:bg-dark-4'}`}
+                  >
+                    <input
+                      type="radio"
+                      name="cjShipping"
+                      checked={selectedCjLogistic?.logisticName === opt.logisticName}
+                      onChange={() => setSelectedCjLogistic(opt)}
+                      className="w-4 h-4 text-main-1 border-dark-4 focus:ring-main-1"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <span className="font-medium text-gray-1">{opt.logisticName}</span>
+                      <span className="text-gray-5 text-sm ml-2">{opt.logisticTime || '—'}</span>
+                    </div>
+                    <span className="text-main-1 font-medium whitespace-nowrap">${Number(opt.logisticPrice).toFixed(2)} USD</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {!cjShippingLoading && !cjShippingError && cjShippingOptions.length === 0 && (
+            <p className="text-sm text-gray-5">No shipping options available for this order. You can still place the order and CJ may assign a default method.</p>
+          )}
+
+          {order && (
+            <div className="border-t border-dark-4 pt-4 space-y-1 text-sm">
+              <div className="flex justify-between text-gray-1">
+                <span>Order total (store)</span>
+                <span>{formatCurrency(order.total)}</span>
+              </div>
+              {selectedCjLogistic && (
+                <div className="flex justify-between text-gray-1">
+                  <span>CJ shipping</span>
+                  <span>${Number(selectedCjLogistic.logisticPrice).toFixed(2)} USD</span>
+                </div>
+              )}
+              <p className="text-gray-5 text-xs pt-1">Total fulfillment: order above + shipping in USD.</p>
+            </div>
+          )}
+
+          <div className="flex gap-3 justify-end pt-2">
+            <Button variant="secondary" onClick={closeCjModal} disabled={isPlacingToCJ}>
+              Cancel
+            </Button>
+            <Button
+              onClick={placeToCJDropshipping}
+              isLoading={isPlacingToCJ}
+              leftIcon={<HiOutlineTruck className="w-4 h-4" />}
+              disabled={cjShippingOptions.length > 0 && !selectedCjLogistic}
+            >
+              Place Order
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

@@ -587,6 +587,49 @@ class CJDropshippingAPI {
     }
   }
 
+  /** Get shipping methods for a full order (multiple products). Uses freightCalculate with products array. */
+  async getShippingMethodsForOrder(params: {
+    products: Array<{ vid: string; quantity: number }>;
+    endCountryCode: string;
+    startCountryCode?: string;
+  }): Promise<{ success: boolean; data?: Array<{ logisticName: string; logisticPrice: number; logisticTime: string; logisticAging?: string }>; error?: string }> {
+    try {
+      if (!params.products?.length) {
+        return { success: true, data: [] };
+      }
+      const response: AxiosResponse = await this.client.post('/v1/logistic/freightCalculate', {
+        startCountryCode: params.startCountryCode || 'CN',
+        endCountryCode: params.endCountryCode,
+        products: params.products.map((p) => ({ vid: p.vid, quantity: p.quantity })),
+      });
+      if (response.data.result || response.data.success) {
+        const data = response.data.data;
+        if (Array.isArray(data) && data.length > 0) {
+          return {
+            success: true,
+            data: data.map((item: { logisticName?: string; logisticNameEn?: string; logisticPrice?: string | number; logisticPriceEn?: string | number; logisticAging?: string; logisticTime?: string }) => ({
+              logisticName: item.logisticName || item.logisticNameEn || 'Shipping',
+              logisticPrice: parseFloat(String(item.logisticPrice ?? item.logisticPriceEn ?? '0')) || 0,
+              logisticTime: item.logisticAging || item.logisticTime || '',
+              logisticAging: item.logisticAging,
+            })),
+          };
+        }
+        return { success: true, data: [] };
+      }
+      return {
+        success: false,
+        error: response.data.message || 'Failed to get shipping methods',
+      };
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { message?: string } }; message?: string };
+      return {
+        success: false,
+        error: err?.response?.data?.message || err?.message || 'API request failed',
+      };
+    }
+  }
+
   // Confirm order payment (tells CJ to process the order)
   async confirmOrder(orderId: string): Promise<{ success: boolean; error?: string }> {
     try {

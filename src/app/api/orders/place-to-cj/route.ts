@@ -28,7 +28,9 @@ async function createNotification(supabase: ReturnType<typeof createServerClient
 
 export async function POST(request: NextRequest) {
   try {
-    const { orderId } = await request.json();
+    const body = await request.json();
+    const orderId = body.orderId;
+    const logisticName = typeof body.logisticName === 'string' ? body.logisticName.trim() || undefined : undefined;
 
     if (!orderId) {
       return NextResponse.json({ success: false, error: 'Order ID required' }, { status: 400 });
@@ -163,6 +165,7 @@ export async function POST(request: NextRequest) {
       },
       products: cjProducts,
       remark: order.customer_notes || '',
+      ...(logisticName && { logisticName }),
     });
 
     if (!cjResult.success) {
