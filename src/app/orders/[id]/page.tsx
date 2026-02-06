@@ -61,6 +61,10 @@ export default function OrderDetailPage() {
   const [cjShippingLoading, setCjShippingLoading] = useState(false);
   const [cjShippingError, setCjShippingError] = useState<string | null>(null);
   const [selectedCjLogistic, setSelectedCjLogistic] = useState<CJShippingOption | null>(null);
+  const [cjOrderTotalZar, setCjOrderTotalZar] = useState<number>(0);
+  const [cjProductCostUsd, setCjProductCostUsd] = useState<number | null>(null);
+  const [usdZarRate, setUsdZarRate] = useState<number>(18.5);
+  const [exchangeRateLoading, setExchangeRateLoading] = useState(false);
   
   const [newStatus, setNewStatus] = useState<OrderStatus>('pending');
   const [trackingNumber, setTrackingNumber] = useState('');
@@ -84,6 +88,8 @@ export default function OrderDetailPage() {
         return;
       }
       setCjShippingOptions(json.data ?? []);
+      setCjOrderTotalZar(Number(json.orderTotalZar) || 0);
+      setCjProductCostUsd(json.cjProductCostUsd != null ? Number(json.cjProductCostUsd) : null);
       if (!json.data?.length) setSelectedCjLogistic(null);
     } catch (err) {
       setCjShippingError(err instanceof Error ? err.message : 'Failed to load shipping options');
@@ -93,15 +99,35 @@ export default function OrderDetailPage() {
     }
   }, [orderId]);
 
+  const fetchExchangeRate = useCallback(async () => {
+    setExchangeRateLoading(true);
+    try {
+      const res = await fetch('/api/exchange-rate');
+      const result = await res.json();
+      if (result.success && result.data?.rate != null) {
+        setUsdZarRate(Number(result.data.rate));
+      }
+    } catch {
+      // Keep existing usdZarRate (fallback 18.5)
+    } finally {
+      setExchangeRateLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
-    if (showCJConfirm && orderId) fetchCjShippingOptions();
-  }, [showCJConfirm, orderId, fetchCjShippingOptions]);
+    if (showCJConfirm && orderId) {
+      fetchCjShippingOptions();
+      fetchExchangeRate();
+    }
+  }, [showCJConfirm, orderId, fetchCjShippingOptions, fetchExchangeRate]);
 
   const closeCjModal = useCallback(() => {
     setShowCJConfirm(false);
     setSelectedCjLogistic(null);
     setCjShippingError(null);
     setCjShippingOptions([]);
+    setCjOrderTotalZar(0);
+    setCjProductCostUsd(null);
   }, []);
 
   const fetchOrder = async () => {
@@ -714,26 +740,32 @@ export default function OrderDetailPage() {
           {!cjShippingLoading && !cjShippingError && cjShippingOptions.length > 0 && (
             <div className="space-y-3">
               <p className="text-sm font-medium text-gray-1">Shipping method</p>
-              <div className="space-y-2 max-h-48 overflow-y-auto border border-dark-4 rounded-lg p-2">
-                {cjShippingOptions.map((opt) => (
-                  <label
-                    key={opt.logisticName}
-                    className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer border transition-colors ${selectedCjLogistic?.logisticName === opt.logisticName ? 'bg-main-1/10 border-main-1/40' : 'bg-dark-3 border-transparent hover:bg-dark-4'}`}
-                  >
-                    <input
-                      type="radio"
-                      name="cjShipping"
-                      checked={selectedCjLogistic?.logisticName === opt.logisticName}
-                      onChange={() => setSelectedCjLogistic(opt)}
-                      className="w-4 h-4 text-main-1 border-dark-4 focus:ring-main-1"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <span className="font-medium text-gray-1">{opt.logisticName}</span>
-                      <span className="text-gray-5 text-sm ml-2">{opt.logisticTime || '—'}</span>
-                    </div>
-                    <span className="text-main-1 font-medium whitespace-nowrap">${Number(opt.logisticPrice).toFixed(2)} USD</span>
-                  </label>
-                ))}
+              <div className="space-y-2 max-h-48 overflow-y-auto border border-dark-4 rounded-lg p-2 bg-dark-2/50">
+                {cjShippingOptions.map((opt) => {
+                  const isSelected = selectedCjLogistic?.logisticName === opt.logisticName;
+                  return (
+                    <label
+                      key={opt.logisticName}
+                      className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer border-2 transition-all ${isSelected ? 'bg-main-1/10 border-main-1 shadow-[0_0_0_1px_rgba(224,136,33,0.3)]' : 'bg-dark-3 border-dark-4 hover:border-dark-5 hover:bg-dark-4'}`}
+                    >
+                      <span className={`relative flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border-2 transition-colors ${isSelected ? 'border-main-1 bg-main-1/10' : 'border-dark-5 bg-dark-2'}`}>
+                        <input
+                          type="radio"
+                          name="cjShipping"
+                          checked={isSelected}
+                          onChange={() => setSelectedCjLogistic(opt)}
+                          className="sr-only"
+                        />
+                        {isSelected && <span className="absolute h-2 w-2 rounded-full bg-main-1" />}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <span className="font-medium text-gray-1">{opt.logisticName}</span>
+                        <span className="text-gray-5 text-sm ml-2">{opt.logisticTime || '—'}</span>
+                      </div>
+                      <span className="text-main-1 font-medium whitespace-nowrap">${Number(opt.logisticPrice).toFixed(2)} USD</span>
+                    </label>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -743,18 +775,51 @@ export default function OrderDetailPage() {
           )}
 
           {order && (
-            <div className="border-t border-dark-4 pt-4 space-y-1 text-sm">
-              <div className="flex justify-between text-gray-1">
-                <span>Order total (store)</span>
-                <span>{formatCurrency(order.total)}</span>
-              </div>
+            <div className="border-t border-dark-4 pt-4 space-y-3 text-sm">
+              <p className="text-gray-5 text-xs">
+                Rate: 1 USD = R {usdZarRate.toFixed(2)} ZAR
+                {exchangeRateLoading && <span className="ml-2 text-gray-5">(updating…)</span>}
+              </p>
+              {cjProductCostUsd != null && (
+                <div className="flex justify-between text-gray-1">
+                  <span>CJ product cost</span>
+                  <span>${cjProductCostUsd.toFixed(2)} USD ({formatCurrency(cjProductCostUsd * usdZarRate)} ZAR)</span>
+                </div>
+              )}
               {selectedCjLogistic && (
                 <div className="flex justify-between text-gray-1">
                   <span>CJ shipping</span>
-                  <span>${Number(selectedCjLogistic.logisticPrice).toFixed(2)} USD</span>
+                  <span>${Number(selectedCjLogistic.logisticPrice).toFixed(2)} USD ({formatCurrency(selectedCjLogistic.logisticPrice * usdZarRate)} ZAR)</span>
                 </div>
               )}
-              <p className="text-gray-5 text-xs pt-1">Total fulfillment: order above + shipping in USD.</p>
+              {selectedCjLogistic && (
+                <>
+                  <div className="flex justify-between font-medium text-gray-1 pt-1 border-t border-dark-4">
+                    <span>Your total cost (CJ)</span>
+                    <span>
+                      {cjProductCostUsd != null
+                        ? `$${(cjProductCostUsd + selectedCjLogistic.logisticPrice).toFixed(2)} USD (${formatCurrency((cjProductCostUsd + selectedCjLogistic.logisticPrice) * usdZarRate)} ZAR)`
+                        : `$${Number(selectedCjLogistic.logisticPrice).toFixed(2)} USD (${formatCurrency(selectedCjLogistic.logisticPrice * usdZarRate)} ZAR)`}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-gray-1">
+                    <span>Order received (customer)</span>
+                    <span>{formatCurrency(cjOrderTotalZar || order.total)}</span>
+                  </div>
+                  <div className="flex justify-between font-medium text-green-400 pt-1 border-t border-dark-4">
+                    <span>Your profit</span>
+                    <span>
+                      {formatCurrency((cjOrderTotalZar || order.total) - (cjProductCostUsd != null ? (cjProductCostUsd + selectedCjLogistic.logisticPrice) * usdZarRate : selectedCjLogistic.logisticPrice * usdZarRate))}
+                    </span>
+                  </div>
+                </>
+              )}
+              {(!selectedCjLogistic || cjShippingOptions.length === 0) && (
+                <div className="flex justify-between text-gray-1">
+                  <span>Order received (customer)</span>
+                  <span>{formatCurrency(cjOrderTotalZar || order.total)}</span>
+                </div>
+              )}
             </div>
           )}
 

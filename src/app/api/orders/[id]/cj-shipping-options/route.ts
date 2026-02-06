@@ -33,7 +33,7 @@ export async function GET(
     const supabase = createServerClient();
     const { data: order, error: orderError } = await supabase
       .from('orders')
-      .select('id, shipping_country, billing_country, order_items(*)')
+      .select('id, total, shipping_country, billing_country, order_items(*)')
       .eq('id', orderId)
       .single();
 
@@ -45,6 +45,32 @@ export async function GET(
     if (!items?.length) {
       return NextResponse.json({ success: false, error: 'Order has no items' }, { status: 400 });
     }
+
+    const productIds = [...new Set(items.map((i) => i.product_id))];
+    const { data: byIdRows } = await supabase
+      .from('admin_products')
+      .select('id, base_price')
+      .in('id', productIds);
+    const { data: byCjIdRows } = await supabase
+      .from('admin_products')
+      .select('cj_product_id, base_price')
+      .in('cj_product_id', productIds);
+
+    const costById = new Map<string, number>();
+    if (byIdRows) for (const p of byIdRows) { if (p.base_price != null) costById.set(p.id, Number(p.base_price)); }
+    if (byCjIdRows) for (const p of byCjIdRows) { if (p.cj_product_id && p.base_price != null) costById.set(p.cj_product_id, Number(p.base_price)); }
+
+    let cjProductCostUsd: number | null = null;
+    let sum = 0;
+    for (const item of items) {
+      const cost = costById.get(item.product_id) ?? null;
+      if (cost == null) {
+        sum = -1;
+        break;
+      }
+      sum += cost * item.quantity;
+    }
+    if (sum >= 0) cjProductCostUsd = sum;
 
     const products = items.map((item) => ({
       vid: item.variant_id || item.product_id,
@@ -64,9 +90,12 @@ export async function GET(
       );
     }
 
+    const orderTotalZar = Number(order.total) || 0;
     return NextResponse.json({
       success: true,
       data: result.data ?? [],
+      orderTotalZar,
+      cjProductCostUsd: cjProductCostUsd ?? null,
     });
   } catch (error) {
     console.error('CJ shipping options error:', error);

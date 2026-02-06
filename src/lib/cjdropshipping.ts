@@ -439,8 +439,8 @@ class CJDropshippingAPI {
 
       const response: AxiosResponse = await this.client.post('/v1/shopping/order/createOrder', {
         orderNumber: orderData.orderNumber,
-        countryCode: 'ZA', //code,
-        shippingCountryCode: 'ZA', //code,
+        countryCode: code,
+        shippingCountryCode: code,
         shippingProvince: orderData.shippingAddress.province,
         shippingCity: orderData.shippingAddress.city,
         shippingAddress: orderData.shippingAddress.address,
