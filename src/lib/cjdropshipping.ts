@@ -48,9 +48,13 @@ export interface CJOrderProduct {
 
 export interface CJOrderAddress {
   countryCode: string;
+  /** Full country name of destination (required for Create Order V2) */
+  country?: string;
   province: string;
   city: string;
   address: string;
+  /** Second line of address (optional) */
+  address2?: string;
   zip: string;
   phone: string;
   fullName: string;
@@ -430,45 +434,61 @@ class CJDropshippingAPI {
     }
   }
 
-  // Create order in CJ Dropshipping
+  /**
+   * Create order in CJ Dropshipping using Create Order V2 API.
+   * @see https://developers.cjdropshipping.com/api2.0/v1/shopping/order/createOrderV2
+   */
   async createOrder(orderData: CJCreateOrderRequest): Promise<{ success: boolean; data?: CJOrderResponse; error?: string }> {
     try {
-      // CJ API requires non-empty countryCode; ensure we never send empty (send both keys they may validate)
-      const raw = String(orderData.shippingAddress?.countryCode ?? '').trim().toUpperCase();
-      const code = raw.length === 2 ? raw : 'ZA';
+      const addr = orderData.shippingAddress;
+      const rawCode = String(addr?.countryCode ?? '').trim().toUpperCase();
+      const shippingCountryCode = rawCode.length === 2 ? rawCode : 'ZA';
+      const shippingCountry = (addr?.country ?? '').trim() || shippingCountryCode;
 
-      const response: AxiosResponse = await this.client.post('/v1/shopping/order/createOrder', {
+      const body: Record<string, unknown> = {
         orderNumber: orderData.orderNumber,
-        countryCode: code,
-        shippingCountryCode: code,
-        shippingProvince: orderData.shippingAddress.province,
-        shippingCity: orderData.shippingAddress.city,
-        shippingAddress: orderData.shippingAddress.address,
-        shippingZip: orderData.shippingAddress.zip,
-        shippingPhone: orderData.shippingAddress.phone,
-        shippingCustomerName: orderData.shippingAddress.fullName,
-        products: orderData.products,
-        remark: orderData.remark || '',
-        logisticName: orderData.logisticName,
-      });
+        shippingCountryCode,
+        shippingCountry,
+        shippingProvince: addr?.province ?? '',
+        shippingCity: addr?.city ?? '',
+        shippingAddress: addr?.address ?? '',
+        shippingZip: addr?.zip ?? '',
+        shippingPhone: addr?.phone ?? '',
+        shippingCustomerName: addr?.fullName ?? '',
+        fromCountryCode: 'CN',
+        remark: orderData.remark ?? '',
+        payType: 3, // No Balance Payment
+        shopLogisticsType: 2, // Seller Logistics
+        products: orderData.products.map((p, i) => ({
+          vid: p.vid,
+          quantity: p.quantity,
+          storeLineItemId: `line-${orderData.orderNumber}-${i}`,
+        })),
+      };
+
+      if (addr?.address2) body.shippingAddress2 = addr.address2;
+      // V2 requires logisticName; send selected method or empty (API may reject if empty)
+      body.logisticName = orderData.logisticName ?? '';
+
+      const response: AxiosResponse = await this.client.post('/v1/shopping/order/createOrderV2', body);
 
       if (response.data.result || response.data.success) {
+        const d = response.data.data;
         return {
           success: true,
           data: {
-            orderId: response.data.data?.orderId,
-            orderNumber: response.data.data?.orderNum || orderData.orderNumber,
-            orderStatus: response.data.data?.orderStatus || 'Created',
-            trackingNumber: response.data.data?.trackNumber,
-            logisticName: response.data.data?.logisticName,
+            orderId: d?.orderId,
+            orderNumber: d?.orderNum ?? orderData.orderNumber,
+            orderStatus: d?.orderStatus ?? 'Created',
+            trackingNumber: d?.trackNumber,
+            logisticName: d?.logisticName,
           },
         };
-      } else {
-        return {
-          success: false,
-          error: response.data.message || 'Failed to create order',
-        };
       }
+      return {
+        success: false,
+        error: response.data.message || 'Failed to create order',
+      };
     } catch (error: unknown) {
       const err = error as { response?: { data?: { message?: string } }; message?: string };
       return {

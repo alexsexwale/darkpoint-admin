@@ -151,16 +151,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Shipping address is required' }, { status: 400 });
     }
 
-    // Create order with CJ (use safeCountryCode so CJ never receives empty)
+    // Create order with CJ using Create Order V2 API
+    const shippingCountryFull = String(order.shipping_country ?? order.billing_country ?? '').trim() || safeCountryCode;
     const cjResult = await cjDropshipping.createOrder({
       orderNumber: order.order_number,
       shippingAddress: {
         countryCode: safeCountryCode,
-        province: (order.shipping_province || shippingCity).trim(), // Fallback to city if province is empty
+        country: shippingCountryFull,
+        province: (order.shipping_province || shippingCity).trim(),
         city: shippingCity,
-        address: shippingAddress,
-        zip: (order.shipping_postal_code || '0000').trim(), // Default zip if empty
-        phone: (order.shipping_phone || '0000000000').trim(), // Default phone if empty
+        address: (order.shipping_address_line1 || '').trim(),
+        address2: (order.shipping_address_line2 || '').trim() || undefined,
+        zip: (order.shipping_postal_code || '0000').trim(),
+        phone: (order.shipping_phone || '0000000000').trim(),
         fullName: shippingName,
       },
       products: cjProducts,
