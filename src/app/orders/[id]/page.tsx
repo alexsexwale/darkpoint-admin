@@ -431,6 +431,9 @@ export default function OrderDetailPage() {
               {order.shipping_phone && (
                 <p className="text-gray-5 mt-2">Phone: {order.shipping_phone}</p>
               )}
+              {order.billing_email && (
+                <p className="text-gray-5 mt-1">Email: {order.billing_email}</p>
+              )}
             </div>
           </Card>
 

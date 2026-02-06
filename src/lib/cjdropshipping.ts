@@ -445,6 +445,15 @@ class CJDropshippingAPI {
       const shippingCountryCode = rawCode.length === 2 ? rawCode : 'ZA';
       const shippingCountry = (addr?.country ?? '').trim() || shippingCountryCode;
 
+      // Consignee ID: CJ requires 13 digits, no special chars. Use phone digits if 13 digits, else placeholder.
+      const phoneDigits = (addr?.phone ?? '').replace(/\D/g, '');
+      const consigneeID =
+        phoneDigits.length === 13
+          ? phoneDigits
+          : phoneDigits.length > 13
+            ? phoneDigits.slice(0, 13)
+            : phoneDigits.padStart(13, '0');
+
       const body: Record<string, unknown> = {
         orderNumber: orderData.orderNumber,
         shippingCountryCode,
@@ -459,6 +468,7 @@ class CJDropshippingAPI {
         remark: orderData.remark ?? '',
         payType: 3, // No Balance Payment
         shopLogisticsType: 2, // Seller Logistics
+        consigneeID,
         products: orderData.products.map((p, i) => ({
           vid: p.vid,
           quantity: p.quantity,
