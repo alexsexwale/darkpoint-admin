@@ -78,6 +78,9 @@ export default function OrdersPage() {
         .order('created_at', { ascending: false })
         .range((page - 1) * pageSize, page * pageSize - 1);
 
+      // Always hide orders that are both pending (status) and pending (payment)
+      query = query.or('status.neq.pending,payment_status.neq.pending');
+
       // Apply filters
       if (statusFilter) {
         query = query.eq('status', statusFilter as OrderStatus);
