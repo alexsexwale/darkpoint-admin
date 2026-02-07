@@ -76,6 +76,18 @@ export interface CJOrderResponse {
   logisticName?: string;
 }
 
+export interface CJTrackInfoItem {
+  trackingNumber: string;
+  logisticName: string;
+  trackingFrom: string;
+  trackingTo: string;
+  deliveryDay: string;
+  deliveryTime: string;
+  trackingStatus: string;
+  lastMileCarrier: string;
+  lastTrackNumber: string;
+}
+
 const GLOBAL_TOKENS_KEY = '__CJ_AUTH_TOKENS__';
 const GLOBAL_AUTH_INFLIGHT_KEY = '__CJ_AUTH_INFLIGHT__';
 
@@ -532,6 +544,54 @@ class CJDropshippingAPI {
           error: response.data.message || 'Failed to get order status',
         };
       }
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { message?: string } }; message?: string };
+      return {
+        success: false,
+        error: err?.response?.data?.message || err?.message || 'API request failed',
+      };
+    }
+  }
+
+  /**
+   * Get tracking information from CJ Dropshipping.
+   * Uses the current API: GET /v1/logistic/trackInfo
+   * @see https://developers.cjdropshipping.com/api2.0/v1/logistic/trackInfo
+   */
+  async getTrackInfo(
+    trackNumber: string
+  ): Promise<{
+    success: boolean;
+    data?: CJTrackInfoItem[];
+    error?: string;
+  }> {
+    try {
+      const response: AxiosResponse = await this.client.get('/v1/logistic/trackInfo', {
+        params: { trackNumber },
+      });
+
+      if (response.data?.result || response.data?.success) {
+        const data = response.data.data;
+        const list = Array.isArray(data) ? data : data ? [data] : [];
+        return {
+          success: true,
+          data: list.map((item: Record<string, unknown>) => ({
+            trackingNumber: String(item.trackingNumber ?? ''),
+            logisticName: String(item.logisticName ?? ''),
+            trackingFrom: String(item.trackingFrom ?? ''),
+            trackingTo: String(item.trackingTo ?? ''),
+            deliveryDay: String(item.deliveryDay ?? ''),
+            deliveryTime: String(item.deliveryTime ?? ''),
+            trackingStatus: String(item.trackingStatus ?? ''),
+            lastMileCarrier: String(item.lastMileCarrier ?? ''),
+            lastTrackNumber: String(item.lastTrackNumber ?? ''),
+          })),
+        };
+      }
+      return {
+        success: false,
+        error: response.data?.message || 'Failed to get tracking information',
+      };
     } catch (error: unknown) {
       const err = error as { response?: { data?: { message?: string } }; message?: string };
       return {

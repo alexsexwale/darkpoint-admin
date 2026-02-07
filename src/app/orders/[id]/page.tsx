@@ -71,6 +71,23 @@ export default function OrderDetailPage() {
   const [trackingUrl, setTrackingUrl] = useState('');
   const [adminNotes, setAdminNotes] = useState('');
 
+  // CJ tracking modal (view tracking info from CJ API)
+  const [showCjTrackingModal, setShowCjTrackingModal] = useState(false);
+  const [cjTrackingData, setCjTrackingData] = useState<Array<{
+    trackingNumber: string;
+    logisticName: string;
+    trackingFrom: string;
+    trackingTo: string;
+    deliveryDay: string;
+    deliveryTime: string;
+    trackingStatus: string;
+    lastMileCarrier: string;
+    lastTrackNumber: string;
+  }> | null>(null);
+  const [cjTrackingLoading, setCjTrackingLoading] = useState(false);
+  const [cjTrackingError, setCjTrackingError] = useState<string | null>(null);
+  const [cjTrackingNumberQueried, setCjTrackingNumberQueried] = useState('');
+
   useEffect(() => {
     fetchOrder();
   }, [orderId]);
@@ -120,6 +137,44 @@ export default function OrderDetailPage() {
       fetchExchangeRate();
     }
   }, [showCJConfirm, orderId, fetchCjShippingOptions, fetchExchangeRate]);
+
+  // Fetch CJ tracking when "View CJ tracking" modal is opened
+  useEffect(() => {
+    if (!showCjTrackingModal || !orderId) return;
+    const trackNumber = (order?.cj_orders?.[0]?.cj_tracking_number || order?.tracking_number || '').trim();
+    if (!trackNumber) {
+      setCjTrackingError('No tracking number available for this order');
+      setCjTrackingData(null);
+      setCjTrackingLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setCjTrackingNumberQueried(trackNumber);
+    setCjTrackingError(null);
+    setCjTrackingData(null);
+    setCjTrackingLoading(true);
+    fetch(`/api/orders/${orderId}/cj-tracking`)
+      .then((res) => res.json())
+      .then((json) => {
+        if (cancelled) return;
+        setCjTrackingLoading(false);
+        if (json.success && json.data) {
+          setCjTrackingData(json.data);
+          setCjTrackingError(null);
+        } else {
+          setCjTrackingError(json.error || 'Failed to load tracking information');
+          setCjTrackingData(null);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setCjTrackingLoading(false);
+          setCjTrackingError(err?.message || 'Failed to load tracking');
+          setCjTrackingData(null);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [showCjTrackingModal, orderId, order?.cj_orders, order?.tracking_number]);
 
   const closeCjModal = useCallback(() => {
     setShowCJConfirm(false);
@@ -536,9 +591,22 @@ export default function OrderDetailPage() {
           {/* Tracking */}
           <Card>
             <CardHeader action={
-              <Button variant="ghost" size="sm" onClick={() => setShowTrackingModal(true)}>
-                <HiOutlinePencil className="w-4 h-4" />
-              </Button>
+              <div className="flex items-center gap-1">
+                {(order.tracking_number || cjOrder?.cj_tracking_number) && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setShowCjTrackingModal(true)}
+                    className="flex items-center gap-1.5"
+                  >
+                    <HiOutlineTruck className="w-4 h-4" />
+                    View CJ tracking
+                  </Button>
+                )}
+                <Button variant="ghost" size="sm" onClick={() => setShowTrackingModal(true)}>
+                  <HiOutlinePencil className="w-4 h-4" />
+                </Button>
+              </div>
             }>
               <CardTitle>Tracking</CardTitle>
             </CardHeader>
@@ -679,6 +747,83 @@ export default function OrderDetailPage() {
             </Button>
             <Button onClick={updateTracking} isLoading={isSaving}>
               Save
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* CJ Tracking Info Modal */}
+      <Modal
+        isOpen={showCjTrackingModal}
+        onClose={() => setShowCjTrackingModal(false)}
+        title="CJ Dropshipping Tracking"
+        size="md"
+      >
+        <div className="space-y-4">
+          {cjTrackingNumberQueried && (
+            <p className="text-gray-5 text-sm">
+              Tracking number: <span className="font-mono text-gray-1">{cjTrackingNumberQueried}</span>
+            </p>
+          )}
+          {cjTrackingLoading && (
+            <div className="flex items-center gap-3 py-6 text-gray-5">
+              <span className="inline-block h-5 w-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              Loading tracking information from CJ…
+            </div>
+          )}
+          {!cjTrackingLoading && cjTrackingError && (
+            <p className="text-red-400 text-sm py-2">{cjTrackingError}</p>
+          )}
+          {!cjTrackingLoading && cjTrackingData && cjTrackingData.length > 0 && (
+            <div className="space-y-4">
+              {cjTrackingData.map((item, idx) => (
+                <div key={idx} className="rounded-lg border border-dark-4 bg-dark-3/50 p-4 space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                    <div>
+                      <span className="text-gray-5 block">Carrier</span>
+                      <span className="text-gray-1">{item.logisticName || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-5 block">Status</span>
+                      <span className="text-gray-1">{item.trackingStatus || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-5 block">From → To</span>
+                      <span className="text-gray-1">{item.trackingFrom || '—'} → {item.trackingTo || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-5 block">Delivery (days)</span>
+                      <span className="text-gray-1">{item.deliveryDay || '—'}</span>
+                    </div>
+                    {item.deliveryTime && (
+                      <div className="sm:col-span-2">
+                        <span className="text-gray-5 block">Delivery time</span>
+                        <span className="text-gray-1">{item.deliveryTime}</span>
+                      </div>
+                    )}
+                    {item.lastMileCarrier && (
+                      <div>
+                        <span className="text-gray-5 block">Last mile carrier</span>
+                        <span className="text-gray-1">{item.lastMileCarrier}</span>
+                      </div>
+                    )}
+                    {item.lastTrackNumber && (
+                      <div>
+                        <span className="text-gray-5 block">Last mile tracking</span>
+                        <span className="text-gray-1 font-mono">{item.lastTrackNumber}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {!cjTrackingLoading && cjTrackingData && cjTrackingData.length === 0 && !cjTrackingError && (
+            <p className="text-gray-5 text-sm">No tracking details returned from CJ.</p>
+          )}
+          <div className="flex justify-end pt-2">
+            <Button variant="secondary" onClick={() => setShowCjTrackingModal(false)}>
+              Close
             </Button>
           </div>
         </div>
