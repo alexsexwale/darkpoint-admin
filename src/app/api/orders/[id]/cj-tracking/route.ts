@@ -86,6 +86,27 @@ export async function GET(
       );
     }
 
+    // Save tracking snapshot to order_tracking (upsert by order_id)
+    const first = result.data?.[0];
+    if (first && orderId) {
+      const row = {
+        order_id: orderId,
+        tracking_number: first.trackingNumber || trackNumber,
+        logistic_name: first.logisticName || null,
+        tracking_from: first.trackingFrom || null,
+        tracking_to: first.trackingTo || null,
+        delivery_day: first.deliveryDay || null,
+        delivery_time: first.deliveryTime || null,
+        tracking_status: first.trackingStatus || null,
+        last_mile_carrier: first.lastMileCarrier || null,
+        last_track_number: first.lastTrackNumber || null,
+      };
+      await supabase.from('order_tracking').upsert(row, {
+        onConflict: 'order_id',
+        ignoreDuplicates: false,
+      });
+    }
+
     return NextResponse.json({
       success: true,
       data: result.data,
