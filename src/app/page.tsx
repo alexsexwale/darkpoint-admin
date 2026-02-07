@@ -11,6 +11,7 @@ import {
   HiOutlineTrendingUp,
   HiOutlineTrendingDown,
   HiOutlineUserCircle,
+  HiOutlineReply,
 } from 'react-icons/hi';
 import { Card, CardHeader, CardTitle, Badge, OrderStatusBadge } from '@/components/ui';
 import { supabase } from '@/lib/supabase';
@@ -23,7 +24,7 @@ interface StatCardProps {
   icon: React.ElementType;
   trend?: { value: number; isPositive: boolean };
   subtitle?: string;
-  color: 'orange' | 'green' | 'blue' | 'purple';
+  color: 'orange' | 'green' | 'blue' | 'purple' | 'teal';
 }
 
 function StatCard({ title, value, icon: Icon, trend, subtitle, color }: StatCardProps) {
@@ -32,6 +33,7 @@ function StatCard({ title, value, icon: Icon, trend, subtitle, color }: StatCard
     green: 'from-green-500/20 to-emerald-500/20 border-green-500/30',
     blue: 'from-blue-500/20 to-cyan-500/20 border-blue-500/30',
     purple: 'from-purple-500/20 to-violet-500/20 border-purple-500/30',
+    teal: 'from-teal-500/20 to-cyan-500/20 border-teal-500/30',
   };
 
   const iconColors = {
@@ -39,6 +41,7 @@ function StatCard({ title, value, icon: Icon, trend, subtitle, color }: StatCard
     green: 'text-green-400',
     blue: 'text-blue-400',
     purple: 'text-purple-400',
+    teal: 'text-teal-400',
   };
 
   return (
@@ -74,6 +77,7 @@ function StatCard({ title, value, icon: Icon, trend, subtitle, color }: StatCard
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [recentOrders, setRecentOrders] = useState<Order[]>([]);
+  const [returnStats, setReturnStats] = useState<{ totalReturns: number; pendingReturns: number }>({ totalReturns: 0, pendingReturns: 0 });
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -127,6 +131,17 @@ export default function DashboardPage() {
         console.error('Error fetching orders:', ordersError);
       } else {
         setRecentOrders(ordersData || []);
+      }
+
+      // Returns stats (service role required; fetch via API)
+      try {
+        const returnsRes = await fetch('/api/returns/stats');
+        if (returnsRes.ok) {
+          const json = await returnsRes.json();
+          setReturnStats({ totalReturns: json.totalReturns ?? 0, pendingReturns: json.pendingReturns ?? 0 });
+        }
+      } catch {
+        // ignore
       }
     } catch (err) {
       console.error('Dashboard error:', err);
@@ -200,8 +215,8 @@ export default function DashboardPage() {
             <div className="h-4 w-32 bg-dark-3 rounded animate-pulse mt-2" />
           </div>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 md:gap-6">
-          {[1, 2, 3, 4, 5].map((i) => (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 md:gap-6">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
             <div key={i} className="h-32 bg-dark-2 border border-dark-4 rounded-lg animate-pulse" />
           ))}
         </div>
@@ -229,7 +244,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 md:gap-6">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 md:gap-6">
         <StatCard
           title="Total Revenue"
           value={formatCurrency(stats?.totalRevenue || 0)}
@@ -264,6 +279,13 @@ export default function DashboardPage() {
           icon={HiOutlineClock}
           subtitle="Requires attention"
           color="orange"
+        />
+        <StatCard
+          title="Returns"
+          value={returnStats.totalReturns}
+          icon={HiOutlineReply}
+          subtitle={`${returnStats.pendingReturns} pending`}
+          color="teal"
         />
       </div>
 
@@ -357,7 +379,7 @@ export default function DashboardPage() {
       </Card>
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 md:gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 md:gap-4">
         <Link href="/orders?status=pending" className="group">
           <Card hover className="h-full">
             <div className="flex items-center gap-3">
@@ -409,6 +431,20 @@ export default function DashboardPage() {
               <div>
                 <p className="font-medium text-gray-1 text-sm">Members</p>
                 <p className="text-xs text-gray-5">{stats?.totalMembers || 0} registered</p>
+              </div>
+            </div>
+          </Card>
+        </Link>
+        
+        <Link href="/returns" className="group">
+          <Card hover className="h-full">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-teal-500/20 rounded-lg group-hover:bg-teal-500/30 transition-colors">
+                <HiOutlineReply className="w-5 h-5 text-teal-400" />
+              </div>
+              <div>
+                <p className="font-medium text-gray-1 text-sm">Returns</p>
+                <p className="text-xs text-gray-5">{returnStats.pendingReturns} pending</p>
               </div>
             </div>
           </Card>
