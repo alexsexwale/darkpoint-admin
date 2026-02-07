@@ -72,6 +72,52 @@ export interface CJOrder {
   last_synced_at: string | null;
 }
 
+// Return request types
+export type ReturnRequestStatus =
+  | 'pending'
+  | 'approved'
+  | 'rejected'
+  | 'in_transit'
+  | 'received'
+  | 'completed'
+  | 'cancelled';
+
+export interface ReturnRequest {
+  id: string;
+  return_number: string;
+  order_id: string;
+  user_id: string | null;
+  email: string;
+  status: ReturnRequestStatus;
+  total_refund_amount: number;
+  additional_info: string | null;
+  rejection_reason: string | null;
+  return_tracking_number: string | null;
+  return_label_url: string | null;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
+  shipped_at: string | null;
+  received_at: string | null;
+  completed_at: string | null;
+  cancelled_at: string | null;
+  created_at: string;
+  updated_at: string;
+  order?: Order;
+  return_request_items?: ReturnRequestItem[];
+}
+
+export interface ReturnRequestItem {
+  id: string;
+  return_request_id: string;
+  order_item_id: string;
+  quantity: number;
+  reason: string;
+  refund_amount: number;
+  condition: string | null;
+  condition_notes: string | null;
+  order_items?: OrderItem;
+}
+
 // User/Member types
 export interface UserProfile {
   id: string;

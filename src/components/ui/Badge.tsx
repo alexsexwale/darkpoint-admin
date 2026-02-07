@@ -78,6 +78,25 @@ export function PaymentStatusBadge({ status }: { status: string }) {
   );
 }
 
+// Return request status badge helper
+export function ReturnStatusBadge({ status }: { status: string }) {
+  const variants: Record<string, BadgeVariant> = {
+    pending: 'warning',
+    approved: 'info',
+    rejected: 'danger',
+    in_transit: 'info',
+    received: 'primary',
+    completed: 'success',
+    cancelled: 'default',
+  };
+
+  return (
+    <Badge variant={variants[status] || 'default'} dot>
+      {status.replace(/_/g, ' ')}
+    </Badge>
+  );
+}
+
 // Review status badge helper
 export function ReviewStatusBadge({ status }: { status: string }) {
   const variants: Record<string, BadgeVariant> = {
