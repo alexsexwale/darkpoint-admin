@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { 
   HiOutlineSearch,
   HiOutlineRefresh,
@@ -70,10 +70,11 @@ function getLevelTierColor(level: number): string {
 
 export default function MembersPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   
   const [members, setMembers] = useState<UserProfile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '');
   const [sortBy, setSortBy] = useState('created_at');
   const [totalCount, setTotalCount] = useState(0);
   const [page, setPage] = useState(1);
