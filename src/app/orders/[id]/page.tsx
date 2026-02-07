@@ -217,7 +217,8 @@ export default function OrderDetailPage() {
 
   // Fetch CJ order detail when "View CJ order details" modal is opened
   useEffect(() => {
-    if (!showCjOrderDetailModal || !orderId || !cjOrder) return;
+    const hasCjOrder = order?.cj_orders?.[0];
+    if (!showCjOrderDetailModal || !orderId || !hasCjOrder) return;
     let cancelled = false;
     setCjOrderDetailError(null);
     setCjOrderDetail(null);
@@ -243,7 +244,7 @@ export default function OrderDetailPage() {
         }
       });
     return () => { cancelled = true; };
-  }, [showCjOrderDetailModal, orderId, cjOrder]);
+  }, [showCjOrderDetailModal, orderId, order?.cj_orders]);
 
   const closeCjModal = useCallback(() => {
     setShowCJConfirm(false);
