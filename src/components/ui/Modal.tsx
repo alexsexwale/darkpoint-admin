@@ -69,15 +69,13 @@ export function Modal({
     <div
       ref={overlayRef}
       onClick={handleOverlayClick}
-      className="fixed inset-0 z-50 flex items-end md:items-center justify-center md:p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200"
     >
       <div
         className={clsx(
           'w-full bg-dark-2 border border-dark-4 shadow-xl animate-in duration-200',
-          // Mobile: slide up from bottom, full width, rounded top corners
-          'rounded-t-2xl md:rounded-lg',
-          'slide-in-from-bottom-4 md:zoom-in-95',
-          // Max height on mobile to allow scrolling
+          'rounded-lg',
+          'zoom-in-95',
           'max-h-[90vh] md:max-h-[85vh] overflow-hidden flex flex-col',
           sizeClasses[size]
         )}
