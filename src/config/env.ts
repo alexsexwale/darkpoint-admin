@@ -23,7 +23,8 @@ export const env = {
   app: {
     url: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001',
     name: process.env.NEXT_PUBLIC_APP_NAME || 'Darkpoint Admin',
-    mainSiteUrl: process.env.NEXT_PUBLIC_MAIN_SITE_URL || 'http://localhost:3000',
+    mainSiteUrl: process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000',
+    orderStatusEmailSecret: process.env.ORDER_STATUS_EMAIL_SECRET || process.env.INTERNAL_WEBHOOK_SECRET || '',
   },
 } as const;
 

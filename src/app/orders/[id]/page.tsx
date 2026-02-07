@@ -306,29 +306,35 @@ export default function OrderDetailPage() {
   const updateOrderStatus = async () => {
     if (!order) return;
     setIsSaving(true);
-    
+
     try {
+      const res = await fetch(`/api/orders/${orderId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to update status');
+      }
+
       const updates: Partial<Order> = { status: newStatus };
-      
-      // Auto-set timestamps based on status
       if (newStatus === 'shipped' && !order.shipped_at) {
         updates.shipped_at = new Date().toISOString();
       }
       if (newStatus === 'delivered' && !order.delivered_at) {
         updates.delivered_at = new Date().toISOString();
       }
-
-      const { error } = await supabase
-        .from('orders')
-        .update(updates)
-        .eq('id', orderId);
-
-      if (error) throw error;
-      
       setOrder({ ...order, ...updates });
       setShowStatusModal(false);
+      if (data.emailSent === false && data.success) {
+        // Status updated but email may not have been sent (e.g. no recipient)
+        // Optionally show a subtle toast in the future
+      }
     } catch (err) {
       console.error('Error updating status:', err);
+      alert(err instanceof Error ? err.message : 'Failed to update status');
     } finally {
       setIsSaving(false);
     }

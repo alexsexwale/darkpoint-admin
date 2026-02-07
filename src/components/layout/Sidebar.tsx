@@ -152,7 +152,7 @@ export function Sidebar({ isOpen, onClose, collapsed, onToggleCollapse }: Sideba
         <div className="border-t border-dark-4/50 p-3">
           {/* View Store Link */}
           <a
-            href={process.env.NEXT_PUBLIC_MAIN_SITE_URL || 'http://localhost:3000'}
+            href={process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}
             target="_blank"
             rel="noopener noreferrer"
             className={clsx(

@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
-
+import { refreshOrderTracking } from '@/lib/orderTracking';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
+
+const TRACKING_BATCH_LIMIT = 50;
 
 export async function GET(request: NextRequest) {
   try {
@@ -26,31 +28,49 @@ export async function GET(request: NextRequest) {
     if (selectError) {
       console.error('Cleanup stale orders select error:', selectError);
       return NextResponse.json(
-        { error: selectError.message, deleted: 0 },
+        { error: selectError.message, deleted: 0, trackingUpdated: 0 },
         { status: 500 }
       );
     }
 
-    if (!staleOrders?.length) {
-      return NextResponse.json({ deleted: 0 });
+    let deleted = 0;
+    if (staleOrders?.length) {
+      const ids = staleOrders.map((r) => r.id);
+      const { error: deleteError } = await supabase.from('orders').delete().in('id', ids);
+      if (deleteError) {
+        console.error('Cleanup stale orders delete error:', deleteError);
+        return NextResponse.json(
+          { error: deleteError.message, deleted: 0, trackingUpdated: 0 },
+          { status: 500 }
+        );
+      }
+      deleted = ids.length;
     }
 
-    const ids = staleOrders.map((r) => r.id);
-    const { error: deleteError } = await supabase.from('orders').delete().in('id', ids);
+    // Refresh order tracking for orders with status processing or shipped (only; ignore all other statuses)
+    const { data: trackingOrders, error: trackingSelectError } = await supabase
+      .from('orders')
+      .select('id')
+      .in('status', ['processing', 'shipped'])
+      .limit(TRACKING_BATCH_LIMIT);
 
-    if (deleteError) {
-      console.error('Cleanup stale orders delete error:', deleteError);
-      return NextResponse.json(
-        { error: deleteError.message, deleted: 0 },
-        { status: 500 }
-      );
+    let trackingUpdated = 0;
+    if (!trackingSelectError && trackingOrders?.length) {
+      for (const row of trackingOrders) {
+        try {
+          const result = await refreshOrderTracking(row.id);
+          if (result.success) trackingUpdated += 1;
+        } catch (err) {
+          console.error('Cron refreshOrderTracking failed for order', row.id, err);
+        }
+      }
     }
 
-    return NextResponse.json({ deleted: ids.length });
+    return NextResponse.json({ deleted, trackingUpdated });
   } catch (err) {
     console.error('Cleanup stale orders error:', err);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Unknown error', deleted: 0 },
+      { error: err instanceof Error ? err.message : 'Unknown error', deleted: 0, trackingUpdated: 0 },
       { status: 500 }
     );
   }
