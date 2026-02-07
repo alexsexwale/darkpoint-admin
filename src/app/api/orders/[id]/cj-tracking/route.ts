@@ -4,6 +4,35 @@ import { cjDropshipping } from '@/lib/cjdropshipping';
 
 const CJ_TRACKING_BASE_URL = 'https://www.cjpacket.com/?trackingNumber=';
 
+/** Canonical tracking stages matching the order tracking pipeline UI. */
+export type OrderTrackingStage =
+  | 'processing'
+  | 'dispatched'
+  | 'en_route'
+  | 'arrived_courier_facility'
+  | 'out_for_delivery'
+  | 'available_for_pickup'
+  | 'unsuccessful_delivery'
+  | 'delivered';
+
+/**
+ * Map CJ trackingStatus (free text) to our canonical order_tracking_stage enum.
+ * Keeps raw tracking_status in DB; tracking_stage is for pipeline display/counts.
+ */
+function mapCjStatusToStage(cjStatus: string | null | undefined): OrderTrackingStage | null {
+  if (!cjStatus || typeof cjStatus !== 'string') return null;
+  const s = cjStatus.toLowerCase().trim();
+  if (s.includes('delivered') || s === 'delivered') return 'delivered';
+  if (s.includes('unsuccessful') || s.includes('failed') || s.includes('failure')) return 'unsuccessful_delivery';
+  if (s.includes('pickup') || s.includes('pick up') || s.includes('available')) return 'available_for_pickup';
+  if (s.includes('out for delivery')) return 'out_for_delivery';
+  if (s.includes('arrived') || s.includes('courier') || s.includes('facility')) return 'arrived_courier_facility';
+  if (s.includes('en route') || s.includes('in transit') || s.includes('transit')) return 'en_route';
+  if (s.includes('dispatched') || s.includes('shipped')) return 'dispatched';
+  if (s.includes('processing') || s.includes('created') || s.includes('pending')) return 'processing';
+  return null;
+}
+
 export async function GET(
   _request: Request,
   context: { params: Promise<{ id: string }> }
@@ -89,6 +118,7 @@ export async function GET(
     // Save tracking snapshot to order_tracking (upsert by order_id)
     const first = result.data?.[0];
     if (first && orderId) {
+      const trackingStage = mapCjStatusToStage(first.trackingStatus);
       const row = {
         order_id: orderId,
         tracking_number: first.trackingNumber || trackNumber,
@@ -98,6 +128,7 @@ export async function GET(
         delivery_day: first.deliveryDay || null,
         delivery_time: first.deliveryTime || null,
         tracking_status: first.trackingStatus || null,
+        tracking_stage: trackingStage,
         last_mile_carrier: first.lastMileCarrier || null,
         last_track_number: first.lastTrackNumber || null,
       };

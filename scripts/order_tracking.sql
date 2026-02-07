@@ -38,6 +38,26 @@ CREATE TRIGGER order_tracking_updated_at
 
 COMMENT ON TABLE order_tracking IS 'CJ Dropshipping tracking snapshot; saved/updated when admin clicks View CJ tracking.';
 
+-- =============================================================================
+-- Tracking stages: match the pipeline UI (Processing → Delivered).
+-- Run this after the table above exists.
+-- =============================================================================
+CREATE TYPE order_tracking_stage AS ENUM (
+  'processing',
+  'dispatched',
+  'en_route',
+  'arrived_courier_facility',
+  'out_for_delivery',
+  'available_for_pickup',
+  'unsuccessful_delivery',
+  'delivered'
+);
+
+ALTER TABLE order_tracking
+  ADD COLUMN IF NOT EXISTS tracking_stage order_tracking_stage;
+
+COMMENT ON COLUMN order_tracking.tracking_stage IS 'Canonical stage in the delivery pipeline; mapped from CJ trackingStatus when saving.';
+
 -- If you use Row Level Security (RLS) on public tables, add a policy so the app can read/write:
 -- ALTER TABLE order_tracking ENABLE ROW LEVEL SECURITY;
 -- CREATE POLICY "Service role can manage order_tracking" ON order_tracking FOR ALL USING (true) WITH CHECK (true);
