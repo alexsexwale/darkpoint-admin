@@ -220,12 +220,14 @@ export default function ReturnsPage() {
                         {format(new Date(r.created_at), 'MMM d, HH:mm')}
                       </span>
                     </TableCell>
-                    <TableCell align="center" onClick={(e) => e.stopPropagation()}>
-                      <Link href={`/returns/${r.id}`}>
-                        <Button variant="ghost" size="sm">
-                          <HiOutlineEye className="w-4 h-4" />
-                        </Button>
-                      </Link>
+                    <TableCell align="center">
+                      <div className="flex items-center justify-center gap-2" onClick={(e) => e.stopPropagation()}>
+                        <Link href={`/returns/${r.id}`}>
+                          <Button variant="ghost" size="sm">
+                            <HiOutlineEye className="w-4 h-4" />
+                          </Button>
+                        </Link>
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
