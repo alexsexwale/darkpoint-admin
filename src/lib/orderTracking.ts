@@ -1,5 +1,6 @@
 import { createServerClient } from '@/lib/supabase';
 import { cjDropshipping } from '@/lib/cjdropshipping';
+import type { OrderStatus } from '@/types';
 
 const CJ_TRACKING_BASE_URL = 'https://www.cjpacket.com/?trackingNumber=';
 
@@ -12,6 +13,41 @@ export type OrderTrackingStage =
   | 'available_for_pickup'
   | 'unsuccessful_delivery'
   | 'delivered';
+
+/** Map tracking_stage to orders.status (forward-only semantics; caller checks isForwardStatusTransition). */
+export function mapTrackingStageToOrderStatus(
+  stage: OrderTrackingStage | null | undefined
+): 'processing' | 'shipped' | 'delivered' | null {
+  if (!stage) return null;
+  if (stage === 'delivered') return 'delivered';
+  if (
+    stage === 'dispatched' ||
+    stage === 'en_route' ||
+    stage === 'arrived_courier_facility' ||
+    stage === 'out_for_delivery' ||
+    stage === 'available_for_pickup' ||
+    stage === 'unsuccessful_delivery'
+  ) {
+    return 'shipped';
+  }
+  if (stage === 'processing') return 'processing';
+  return null;
+}
+
+/** Allow only forward transitions from tracking; never overwrite cancelled/refunded. */
+export function isForwardStatusTransition(
+  current: OrderStatus,
+  next: OrderStatus
+): boolean {
+  if (current === next) return false;
+  const terminal: OrderStatus[] = ['cancelled', 'refunded'];
+  if (terminal.includes(current)) return false;
+  const order: Record<string, number> = { pending: 0, processing: 1, shipped: 2, delivered: 3 };
+  const c = order[current];
+  const n = order[next];
+  if (c === undefined || n === undefined) return false;
+  return n > c;
+}
 
 function mapCjStatusToStage(cjStatus: string | null | undefined): OrderTrackingStage | null {
   if (!cjStatus || typeof cjStatus !== 'string') return null;
@@ -44,6 +80,8 @@ export interface RefreshOrderTrackingResult {
   trackNumber?: string;
   trackingUrl?: string;
   saved?: boolean;
+  /** Set when tracking was upserted; cron uses this to sync orders.status. */
+  trackingStage?: OrderTrackingStage | null;
 }
 
 /**
@@ -138,12 +176,14 @@ export async function refreshOrderTracking(orderId: string): Promise<RefreshOrde
       });
     }
 
+    const trackingStage = first ? mapCjStatusToStage(first.trackingStatus) : null;
     return {
       success: true,
       data: result.data,
       trackNumber,
       trackingUrl: trackingUrl || undefined,
       saved,
+      trackingStage,
     };
   } catch (err) {
     console.error('refreshOrderTracking error:', err);

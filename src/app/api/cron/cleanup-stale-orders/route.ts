@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
-import { refreshOrderTracking } from '@/lib/orderTracking';
+import {
+  refreshOrderTracking,
+  mapTrackingStageToOrderStatus,
+  isForwardStatusTransition,
+} from '@/lib/orderTracking';
+import { sendOrderStatusEmail } from '@/lib/orderStatusEmail';
+import type { OrderStatus } from '@/types';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -28,7 +34,7 @@ export async function GET(request: NextRequest) {
     if (selectError) {
       console.error('Cleanup stale orders select error:', selectError);
       return NextResponse.json(
-        { error: selectError.message, deleted: 0, trackingUpdated: 0 },
+        { error: selectError.message, deleted: 0, trackingUpdated: 0, statusEmailsSent: 0 },
         { status: 500 }
       );
     }
@@ -40,7 +46,7 @@ export async function GET(request: NextRequest) {
       if (deleteError) {
         console.error('Cleanup stale orders delete error:', deleteError);
         return NextResponse.json(
-          { error: deleteError.message, deleted: 0, trackingUpdated: 0 },
+          { error: deleteError.message, deleted: 0, trackingUpdated: 0, statusEmailsSent: 0 },
           { status: 500 }
         );
       }
@@ -55,22 +61,68 @@ export async function GET(request: NextRequest) {
       .limit(TRACKING_BATCH_LIMIT);
 
     let trackingUpdated = 0;
+    let statusEmailsSent = 0;
     if (!trackingSelectError && trackingOrders?.length) {
       for (const row of trackingOrders) {
         try {
           const result = await refreshOrderTracking(row.id);
-          if (result.success) trackingUpdated += 1;
+          if (result.success) {
+            trackingUpdated += 1;
+            const newOrderStatus = mapTrackingStageToOrderStatus(result.trackingStage ?? null);
+            if (newOrderStatus === null) continue;
+            const { data: order } = await supabase
+              .from('orders')
+              .select('id, status, shipped_at, delivered_at')
+              .eq('id', row.id)
+              .single();
+            if (!order) continue;
+            const currentStatus = (order as { status: string }).status;
+            if (
+              newOrderStatus !== currentStatus &&
+              isForwardStatusTransition(currentStatus as OrderStatus, newOrderStatus as OrderStatus)
+            ) {
+              const updates: Record<string, unknown> = {
+                status: newOrderStatus,
+                updated_at: new Date().toISOString(),
+              };
+              if (
+                newOrderStatus === 'shipped' &&
+                !(order as { shipped_at?: string | null }).shipped_at
+              ) {
+                updates.shipped_at = new Date().toISOString();
+              }
+              if (
+                newOrderStatus === 'delivered' &&
+                !(order as { delivered_at?: string | null }).delivered_at
+              ) {
+                updates.delivered_at = new Date().toISOString();
+              }
+              const { error: updateErr } = await supabase
+                .from('orders')
+                .update(updates)
+                .eq('id', row.id);
+              if (!updateErr) {
+                const sent = await sendOrderStatusEmail(row.id, newOrderStatus);
+                if (sent) statusEmailsSent += 1;
+              }
+            }
+          }
         } catch (err) {
           console.error('Cron refreshOrderTracking failed for order', row.id, err);
         }
       }
     }
 
-    return NextResponse.json({ deleted, trackingUpdated });
+    return NextResponse.json({ deleted, trackingUpdated, statusEmailsSent });
   } catch (err) {
     console.error('Cleanup stale orders error:', err);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Unknown error', deleted: 0, trackingUpdated: 0 },
+      {
+        error: err instanceof Error ? err.message : 'Unknown error',
+        deleted: 0,
+        trackingUpdated: 0,
+        statusEmailsSent: 0,
+      },
       { status: 500 }
     );
   }
