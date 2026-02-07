@@ -88,6 +88,7 @@ export default function OrderDetailPage() {
   const [cjTrackingLoading, setCjTrackingLoading] = useState(false);
   const [cjTrackingError, setCjTrackingError] = useState<string | null>(null);
   const [cjTrackingNumberQueried, setCjTrackingNumberQueried] = useState('');
+  const [cjTrackingUrl, setCjTrackingUrl] = useState('');
 
   // CJ order detail modal (full order from CJ getOrderDetail)
   const [showCjOrderDetailModal, setShowCjOrderDetailModal] = useState(false);
@@ -177,18 +178,19 @@ export default function OrderDetailPage() {
     }
   }, [showCJConfirm, orderId, fetchCjShippingOptions, fetchExchangeRate]);
 
-  // Fetch CJ tracking when "View CJ tracking" modal is opened
+  // Fetch CJ tracking when "View CJ tracking" modal is opened (API may pull & save from CJ order details if missing)
   useEffect(() => {
-    if (!showCjTrackingModal || !orderId) return;
-    const trackNumber = (order?.cj_orders?.[0]?.cj_tracking_number || order?.tracking_number || '').trim();
-    if (!trackNumber) {
-      setCjTrackingError('No tracking number available for this order');
+    const hasCjOrder = order?.cj_orders?.[0];
+    if (!showCjTrackingModal || !orderId || !order) return;
+    if (!hasCjOrder) {
+      setCjTrackingError('This order has not been placed with CJ Dropshipping');
       setCjTrackingData(null);
       setCjTrackingLoading(false);
       return;
     }
     let cancelled = false;
-    setCjTrackingNumberQueried(trackNumber);
+    setCjTrackingNumberQueried('');
+    setCjTrackingUrl('');
     setCjTrackingError(null);
     setCjTrackingData(null);
     setCjTrackingLoading(true);
@@ -200,9 +202,25 @@ export default function OrderDetailPage() {
         if (json.success && json.data) {
           setCjTrackingData(json.data);
           setCjTrackingError(null);
+          setCjTrackingNumberQueried(json.trackNumber || '');
+          setCjTrackingUrl(json.trackingUrl || '');
+          // If API pulled and saved tracking, update local order and edit form so UI reflects it
+          if (json.saved && json.trackNumber && order) {
+            setOrder({
+              ...order,
+              tracking_number: json.trackNumber,
+              tracking_url: json.trackingUrl || order.tracking_url || null,
+              cj_orders: order.cj_orders?.map((cj, i) =>
+                i === 0 ? { ...cj, cj_tracking_number: json.trackNumber } : cj
+              ) ?? order.cj_orders,
+            });
+            setTrackingNumber(json.trackNumber);
+            setTrackingUrl(json.trackingUrl || '');
+          }
         } else {
           setCjTrackingError(json.error || 'Failed to load tracking information');
           setCjTrackingData(null);
+          setCjTrackingNumberQueried(json.trackNumber || '');
         }
       })
       .catch((err) => {
@@ -213,7 +231,7 @@ export default function OrderDetailPage() {
         }
       });
     return () => { cancelled = true; };
-  }, [showCjTrackingModal, orderId, order?.cj_orders, order?.tracking_number]);
+  }, [showCjTrackingModal, orderId, order?.cj_orders, order]);
 
   // Fetch CJ order detail when "View CJ order details" modal is opened
   useEffect(() => {
@@ -674,7 +692,7 @@ export default function OrderDetailPage() {
           <Card>
             <CardHeader action={
               <div className="flex items-center gap-1">
-                {(order.tracking_number || cjOrder?.cj_tracking_number) && (
+                {cjOrder && (
                   <Button
                     variant="secondary"
                     size="sm"
@@ -843,9 +861,21 @@ export default function OrderDetailPage() {
       >
         <div className="space-y-4">
           {cjTrackingNumberQueried && (
-            <p className="text-gray-5 text-sm">
-              Tracking number: <span className="font-mono text-gray-1">{cjTrackingNumberQueried}</span>
-            </p>
+            <div className="space-y-1">
+              <p className="text-gray-5 text-sm">
+                Tracking number: <span className="font-mono text-gray-1">{cjTrackingNumberQueried}</span>
+              </p>
+              {cjTrackingUrl && (
+                <a
+                  href={cjTrackingUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-main-1 hover:underline text-sm"
+                >
+                  Track package on CJPacket <HiOutlineExternalLink className="w-4 h-4" />
+                </a>
+              )}
+            </div>
           )}
           {cjTrackingLoading && (
             <div className="flex items-center gap-3 py-6 text-gray-5">
