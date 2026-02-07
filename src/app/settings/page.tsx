@@ -143,85 +143,6 @@ export default function SettingsPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Shipping Settings */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-500/20 rounded-lg">
-                <HiOutlineTruck className="w-5 h-5 text-blue-400" />
-              </div>
-              <div>
-                <CardTitle>Shipping</CardTitle>
-                <CardDescription>Configure shipping rates</CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          <div className="space-y-4">
-            <Input
-              label="Free Shipping Threshold (R)"
-              type="number"
-              value={settings.shipping.free_threshold}
-              onChange={(e) => updateShipping('free_threshold', e.target.value)}
-              hint="Orders above this amount get free shipping"
-            />
-            <Input
-              label="Flat Rate Shipping (R)"
-              type="number"
-              value={settings.shipping.flat_rate}
-              onChange={(e) => updateShipping('flat_rate', e.target.value)}
-            />
-            <Input
-              label="Express Shipping (R)"
-              type="number"
-              value={settings.shipping.express_rate}
-              onChange={(e) => updateShipping('express_rate', e.target.value)}
-            />
-            <Button 
-              onClick={() => saveSetting('shipping', settings.shipping)}
-              isLoading={isSaving}
-            >
-              Save Shipping Settings
-            </Button>
-          </div>
-        </Card>
-
-        {/* Markup Settings */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-green-500/20 rounded-lg">
-                <HiOutlineCurrencyDollar className="w-5 h-5 text-green-400" />
-              </div>
-              <div>
-                <CardTitle>Product Markup</CardTitle>
-                <CardDescription>Default pricing markup percentages</CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          <div className="space-y-4">
-            <Input
-              label="Default Markup (%)"
-              type="number"
-              value={settings.markup.default_percent}
-              onChange={(e) => updateMarkup('default_percent', e.target.value)}
-              hint="Applied to all new products"
-            />
-            <Input
-              label="Featured Product Markup (%)"
-              type="number"
-              value={settings.markup.featured_percent}
-              onChange={(e) => updateMarkup('featured_percent', e.target.value)}
-              hint="Applied to featured products"
-            />
-            <Button 
-              onClick={() => saveSetting('markup', settings.markup)}
-              isLoading={isSaving}
-            >
-              Save Markup Settings
-            </Button>
-          </div>
-        </Card>
-
         {/* Notification Settings */}
         <Card>
           <CardHeader>
@@ -333,6 +254,13 @@ export default function SettingsPage() {
               <div>
                 <p className="text-gray-1 font-medium">Yoco</p>
                 <p className="text-sm text-gray-5">Payment processing</p>
+              </div>
+              <span className="px-2 py-1 bg-green-500/20 text-green-400 text-xs rounded">Connected</span>
+            </div>
+            <div className="flex items-center justify-between py-3">
+              <div>
+                <p className="text-gray-1 font-medium">Resend Email Service</p>
+                <p className="text-sm text-gray-5">Email sending service</p>
               </div>
               <span className="px-2 py-1 bg-green-500/20 text-green-400 text-xs rounded">Connected</span>
             </div>
