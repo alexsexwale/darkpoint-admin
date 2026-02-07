@@ -88,6 +88,50 @@ export interface CJTrackInfoItem {
   lastTrackNumber: string;
 }
 
+/** Product line item in CJ order detail (1.7 Query Order) */
+export interface CJOrderDetailProduct {
+  vid: string;
+  quantity: number;
+  sellPrice?: number;
+  lineItemId?: string;
+  storeLineItemId?: string;
+  productionOrderStatus?: number;
+  abnormalType?: number[];
+}
+
+/** Full order detail from getOrderDetail (1.7 Query Order) */
+export interface CJOrderDetail {
+  orderId: string;
+  orderNum?: string;
+  platformOrderId?: string;
+  cjOrderId?: string | null;
+  cjOrderCode?: string;
+  fromCountryCode?: string;
+  shippingCountryCode?: string;
+  shippingProvince?: string;
+  shippingCity?: string;
+  shippingAddress?: string;
+  shippingCustomerName?: string;
+  shippingPhone?: string;
+  remark?: string | null;
+  logisticName?: string | null;
+  trackNumber?: string | null;
+  trackingUrl?: string | null;
+  orderWeight?: number;
+  orderAmount?: number;
+  productAmount?: number;
+  postageAmount?: number | null;
+  orderStatus?: string;
+  createDate?: string;
+  paymentDate?: string | null;
+  outWarehouseTime?: string | null;
+  storeCreateDate?: string | null;
+  isComplete?: number;
+  storageId?: string | null;
+  storageName?: string | null;
+  productList?: CJOrderDetailProduct[];
+}
+
 const GLOBAL_TOKENS_KEY = '__CJ_AUTH_TOKENS__';
 const GLOBAL_AUTH_INFLIGHT_KEY = '__CJ_AUTH_INFLIGHT__';
 
@@ -520,7 +564,7 @@ class CJDropshippingAPI {
     }
   }
 
-  // Get order status from CJ
+  // Get order status from CJ (subset of fields)
   async getOrderStatus(orderId: string): Promise<{ success: boolean; data?: CJOrderResponse; error?: string }> {
     try {
       const response: AxiosResponse = await this.client.get('/v1/shopping/order/getOrderDetail', {
@@ -544,6 +588,86 @@ class CJDropshippingAPI {
           error: response.data.message || 'Failed to get order status',
         };
       }
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { message?: string } }; message?: string };
+      return {
+        success: false,
+        error: err?.response?.data?.message || err?.message || 'API request failed',
+      };
+    }
+  }
+
+  /**
+   * Get full order detail from CJ Dropshipping (1.7 Query Order).
+   * Supports custom order id or CJ order id.
+   * @see https://developers.cjdropshipping.com/api2.0/v1/shopping/order/getOrderDetail
+   */
+  async getOrderDetail(
+    orderId: string
+  ): Promise<{ success: boolean; data?: CJOrderDetail; error?: string }> {
+    try {
+      const response: AxiosResponse = await this.client.get('/v1/shopping/order/getOrderDetail', {
+        params: { orderId },
+      });
+
+      if (response.data?.result || response.data?.success) {
+        const d = response.data.data as Record<string, unknown> | undefined;
+        if (!d) {
+          return { success: true, data: { orderId } };
+        }
+        const productList = Array.isArray(d.productList)
+          ? (d.productList as Record<string, unknown>[]).map((p) => ({
+              vid: String(p.vid ?? ''),
+              quantity: Number(p.quantity ?? 0),
+              sellPrice: p.sellPrice != null ? Number(p.sellPrice) : undefined,
+              lineItemId: p.lineItemId != null ? String(p.lineItemId) : undefined,
+              storeLineItemId: p.storeLineItemId != null ? String(p.storeLineItemId) : undefined,
+              productionOrderStatus:
+                p.productionOrderStatus != null ? Number(p.productionOrderStatus) : undefined,
+              abnormalType: Array.isArray(p.abnormalType) ? (p.abnormalType as number[]) : undefined,
+            }))
+          : undefined;
+        const data: CJOrderDetail = {
+          orderId: String(d.orderId ?? orderId),
+          orderNum: d.orderNum != null ? String(d.orderNum) : undefined,
+          platformOrderId: d.platformOrderId != null ? String(d.platformOrderId) : undefined,
+          cjOrderId: d.cjOrderId != null ? String(d.cjOrderId) : null,
+          cjOrderCode: d.cjOrderCode != null ? String(d.cjOrderCode) : undefined,
+          fromCountryCode: d.fromCountryCode != null ? String(d.fromCountryCode) : undefined,
+          shippingCountryCode:
+            d.shippingCountryCode != null ? String(d.shippingCountryCode) : undefined,
+          shippingProvince: d.shippingProvince != null ? String(d.shippingProvince) : undefined,
+          shippingCity: d.shippingCity != null ? String(d.shippingCity) : undefined,
+          shippingAddress: d.shippingAddress != null ? String(d.shippingAddress) : undefined,
+          shippingCustomerName:
+            d.shippingCustomerName != null ? String(d.shippingCustomerName) : undefined,
+          shippingPhone: d.shippingPhone != null ? String(d.shippingPhone) : undefined,
+          remark: d.remark != null ? String(d.remark) : null,
+          logisticName: d.logisticName != null ? String(d.logisticName) : null,
+          trackNumber: d.trackNumber != null ? String(d.trackNumber) : null,
+          trackingUrl: d.trackingUrl != null ? String(d.trackingUrl) : null,
+          orderWeight: d.orderWeight != null ? Number(d.orderWeight) : undefined,
+          orderAmount: d.orderAmount != null ? Number(d.orderAmount) : undefined,
+          productAmount: d.productAmount != null ? Number(d.productAmount) : undefined,
+          postageAmount: d.postageAmount != null ? Number(d.postageAmount) : null,
+          orderStatus: d.orderStatus != null ? String(d.orderStatus) : undefined,
+          createDate: d.createDate != null ? String(d.createDate) : undefined,
+          paymentDate: d.paymentDate != null ? String(d.paymentDate) : null,
+          outWarehouseTime:
+            d.outWarehouseTime != null ? String(d.outWarehouseTime) : null,
+          storeCreateDate:
+            d.storeCreateDate != null ? String(d.storeCreateDate) : null,
+          isComplete: d.isComplete != null ? Number(d.isComplete) : undefined,
+          storageId: d.storageId != null ? String(d.storageId) : null,
+          storageName: d.storageName != null ? String(d.storageName) : null,
+          productList,
+        };
+        return { success: true, data };
+      }
+      return {
+        success: false,
+        error: response.data?.message || 'Failed to get order detail',
+      };
     } catch (error: unknown) {
       const err = error as { response?: { data?: { message?: string } }; message?: string };
       return {

@@ -10,6 +10,7 @@ import {
   HiOutlineExternalLink,
   HiOutlinePencil,
   HiOutlineRefresh,
+  HiOutlineDocumentText,
 } from 'react-icons/hi';
 import { 
   Card, 
@@ -87,6 +88,44 @@ export default function OrderDetailPage() {
   const [cjTrackingLoading, setCjTrackingLoading] = useState(false);
   const [cjTrackingError, setCjTrackingError] = useState<string | null>(null);
   const [cjTrackingNumberQueried, setCjTrackingNumberQueried] = useState('');
+
+  // CJ order detail modal (full order from CJ getOrderDetail)
+  const [showCjOrderDetailModal, setShowCjOrderDetailModal] = useState(false);
+  const [cjOrderDetail, setCjOrderDetail] = useState<{
+    orderId: string;
+    orderNum?: string;
+    platformOrderId?: string;
+    cjOrderId?: string | null;
+    orderStatus?: string;
+    trackNumber?: string | null;
+    trackingUrl?: string | null;
+    logisticName?: string | null;
+    orderAmount?: number;
+    productAmount?: number;
+    postageAmount?: number | null;
+    createDate?: string;
+    paymentDate?: string | null;
+    outWarehouseTime?: string | null;
+    shippingCountryCode?: string;
+    shippingProvince?: string;
+    shippingCity?: string;
+    shippingAddress?: string;
+    shippingCustomerName?: string;
+    shippingPhone?: string;
+    fromCountryCode?: string;
+    storageId?: string | null;
+    storageName?: string | null;
+    productList?: Array<{
+      vid: string;
+      quantity: number;
+      sellPrice?: number;
+      lineItemId?: string;
+      storeLineItemId?: string;
+      productionOrderStatus?: number;
+    }>;
+  } | null>(null);
+  const [cjOrderDetailLoading, setCjOrderDetailLoading] = useState(false);
+  const [cjOrderDetailError, setCjOrderDetailError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchOrder();
@@ -175,6 +214,36 @@ export default function OrderDetailPage() {
       });
     return () => { cancelled = true; };
   }, [showCjTrackingModal, orderId, order?.cj_orders, order?.tracking_number]);
+
+  // Fetch CJ order detail when "View CJ order details" modal is opened
+  useEffect(() => {
+    if (!showCjOrderDetailModal || !orderId || !cjOrder) return;
+    let cancelled = false;
+    setCjOrderDetailError(null);
+    setCjOrderDetail(null);
+    setCjOrderDetailLoading(true);
+    fetch(`/api/orders/${orderId}/cj-order-detail`)
+      .then((res) => res.json())
+      .then((json) => {
+        if (cancelled) return;
+        setCjOrderDetailLoading(false);
+        if (json.success && json.data) {
+          setCjOrderDetail(json.data);
+          setCjOrderDetailError(null);
+        } else {
+          setCjOrderDetailError(json.error || 'Failed to load CJ order details');
+          setCjOrderDetail(null);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setCjOrderDetailLoading(false);
+          setCjOrderDetailError(err?.message || 'Failed to load order details');
+          setCjOrderDetail(null);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [showCjOrderDetailModal, orderId, cjOrder]);
 
   const closeCjModal = useCallback(() => {
     setShowCJConfirm(false);
@@ -528,7 +597,19 @@ export default function OrderDetailPage() {
 
           {/* CJ Dropshipping Status */}
           <Card>
-            <CardHeader>
+            <CardHeader action={
+              cjOrder ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowCjOrderDetailModal(true)}
+                  className="flex items-center gap-1.5"
+                >
+                  <HiOutlineDocumentText className="w-4 h-4" />
+                  View order details
+                </Button>
+              ) : undefined
+            }>
               <CardTitle>CJ Dropshipping</CardTitle>
             </CardHeader>
             {cjOrder ? (
@@ -823,6 +904,184 @@ export default function OrderDetailPage() {
           )}
           <div className="flex justify-end pt-2">
             <Button variant="secondary" onClick={() => setShowCjTrackingModal(false)}>
+              Close
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* CJ Order Detail Modal */}
+      <Modal
+        isOpen={showCjOrderDetailModal}
+        onClose={() => setShowCjOrderDetailModal(false)}
+        title="CJ Dropshipping Order Details"
+        size="lg"
+      >
+        <div className="space-y-4">
+          {cjOrderDetailLoading && (
+            <div className="flex items-center gap-3 py-6 text-gray-5">
+              <span className="inline-block h-5 w-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              Loading order details from CJ…
+            </div>
+          )}
+          {!cjOrderDetailLoading && cjOrderDetailError && (
+            <p className="text-red-400 text-sm py-2">{cjOrderDetailError}</p>
+          )}
+          {!cjOrderDetailLoading && cjOrderDetail && (
+            <div className="space-y-5">
+              <div className="rounded-lg border border-dark-4 bg-dark-3/50 p-4 space-y-3">
+                <h4 className="text-xs font-heading uppercase tracking-wider text-gray-5 mb-2">Order &amp; status</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                  <div>
+                    <span className="text-gray-5 block">CJ Order ID</span>
+                    <span className="text-gray-1 font-mono">{cjOrderDetail.orderId}</span>
+                  </div>
+                  {cjOrderDetail.orderNum && (
+                    <div>
+                      <span className="text-gray-5 block">Order number</span>
+                      <span className="text-gray-1">{cjOrderDetail.orderNum}</span>
+                    </div>
+                  )}
+                  {cjOrderDetail.platformOrderId && (
+                    <div>
+                      <span className="text-gray-5 block">Platform order ID</span>
+                      <span className="text-gray-1">{cjOrderDetail.platformOrderId}</span>
+                    </div>
+                  )}
+                  <div>
+                    <span className="text-gray-5 block">Status</span>
+                    <Badge variant="success">{cjOrderDetail.orderStatus || '—'}</Badge>
+                  </div>
+                  {cjOrderDetail.logisticName && (
+                    <div className="sm:col-span-2">
+                      <span className="text-gray-5 block">Logistics</span>
+                      <span className="text-gray-1">{cjOrderDetail.logisticName}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-dark-4 bg-dark-3/50 p-4 space-y-3">
+                <h4 className="text-xs font-heading uppercase tracking-wider text-gray-5 mb-2">Shipping</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                  {cjOrderDetail.shippingCustomerName && (
+                    <div>
+                      <span className="text-gray-5 block">Recipient</span>
+                      <span className="text-gray-1">{cjOrderDetail.shippingCustomerName}</span>
+                    </div>
+                  )}
+                  {cjOrderDetail.shippingPhone && (
+                    <div>
+                      <span className="text-gray-5 block">Phone</span>
+                      <span className="text-gray-1">{cjOrderDetail.shippingPhone}</span>
+                    </div>
+                  )}
+                  {(cjOrderDetail.shippingAddress || cjOrderDetail.shippingCity) && (
+                    <div className="sm:col-span-2">
+                      <span className="text-gray-5 block">Address</span>
+                      <span className="text-gray-1">
+                        {[cjOrderDetail.shippingAddress, cjOrderDetail.shippingCity, cjOrderDetail.shippingProvince, cjOrderDetail.shippingCountryCode]
+                          .filter(Boolean)
+                          .join(', ')}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-dark-4 bg-dark-3/50 p-4 space-y-3">
+                <h4 className="text-xs font-heading uppercase tracking-wider text-gray-5 mb-2">Amounts &amp; dates</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                  {cjOrderDetail.orderAmount != null && (
+                    <div>
+                      <span className="text-gray-5 block">Order amount (USD)</span>
+                      <span className="text-gray-1">${Number(cjOrderDetail.orderAmount).toFixed(2)}</span>
+                    </div>
+                  )}
+                  {cjOrderDetail.productAmount != null && (
+                    <div>
+                      <span className="text-gray-5 block">Product amount (USD)</span>
+                      <span className="text-gray-1">${Number(cjOrderDetail.productAmount).toFixed(2)}</span>
+                    </div>
+                  )}
+                  {cjOrderDetail.postageAmount != null && (
+                    <div>
+                      <span className="text-gray-5 block">Postage (USD)</span>
+                      <span className="text-gray-1">${Number(cjOrderDetail.postageAmount).toFixed(2)}</span>
+                    </div>
+                  )}
+                  {cjOrderDetail.createDate && (
+                    <div>
+                      <span className="text-gray-5 block">Created</span>
+                      <span className="text-gray-1">{cjOrderDetail.createDate}</span>
+                    </div>
+                  )}
+                  {cjOrderDetail.paymentDate && (
+                    <div>
+                      <span className="text-gray-5 block">Payment date</span>
+                      <span className="text-gray-1">{cjOrderDetail.paymentDate}</span>
+                    </div>
+                  )}
+                  {cjOrderDetail.outWarehouseTime && (
+                    <div>
+                      <span className="text-gray-5 block">Out of warehouse</span>
+                      <span className="text-gray-1">{cjOrderDetail.outWarehouseTime}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {(cjOrderDetail.trackNumber || cjOrderDetail.trackingUrl) && (
+                <div className="rounded-lg border border-dark-4 bg-dark-3/50 p-4 space-y-2">
+                  <h4 className="text-xs font-heading uppercase tracking-wider text-gray-5 mb-2">Tracking</h4>
+                  {cjOrderDetail.trackNumber && (
+                    <p className="text-sm">
+                      <span className="text-gray-5">Number: </span>
+                      <span className="text-gray-1 font-mono">{cjOrderDetail.trackNumber}</span>
+                    </p>
+                  )}
+                  {cjOrderDetail.trackingUrl && (
+                    <a
+                      href={cjOrderDetail.trackingUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-main-1 hover:underline text-sm"
+                    >
+                      Open tracking URL <HiOutlineExternalLink className="w-4 h-4" />
+                    </a>
+                  )}
+                </div>
+              )}
+
+              {cjOrderDetail.productList && cjOrderDetail.productList.length > 0 && (
+                <div className="rounded-lg border border-dark-4 bg-dark-3/50 p-4 space-y-2">
+                  <h4 className="text-xs font-heading uppercase tracking-wider text-gray-5 mb-2">Products</h4>
+                  <ul className="space-y-2">
+                    {cjOrderDetail.productList.map((p, idx) => (
+                      <li key={idx} className="flex justify-between items-center text-sm py-1.5 border-b border-dark-4 last:border-0">
+                        <span className="text-gray-1 font-mono text-xs">{p.vid}</span>
+                        <span className="text-gray-1">qty {p.quantity}</span>
+                        {p.sellPrice != null && (
+                          <span className="text-gray-5">${Number(p.sellPrice).toFixed(2)}</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {(cjOrderDetail.storageName || cjOrderDetail.fromCountryCode) && (
+                <div className="rounded-lg border border-dark-4 bg-dark-3/50 p-4 text-sm">
+                  <h4 className="text-xs font-heading uppercase tracking-wider text-gray-5 mb-2">Origin</h4>
+                  <p className="text-gray-1">
+                    {[cjOrderDetail.storageName, cjOrderDetail.fromCountryCode].filter(Boolean).join(' • ')}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+          <div className="flex justify-end pt-2">
+            <Button variant="secondary" onClick={() => setShowCjOrderDetailModal(false)}>
               Close
             </Button>
           </div>
