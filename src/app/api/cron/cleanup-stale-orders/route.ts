@@ -116,7 +116,6 @@ export async function GET(request: NextRequest) {
     // Trigger abandoned-cart job on main site (no new cron path; reuse this run)
     let abandonedCartSent = 0;
     const mainSiteUrl = (process.env.NEXT_PUBLIC_SITE_URL || '').replace(/\/$/, '');
-    const cronSecret = process.env.CRON_SECRET;
     if (mainSiteUrl && cronSecret) {
       try {
         const res = await fetch(`${mainSiteUrl}/api/cron/abandoned-cart`, {
