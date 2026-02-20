@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
     if (selectError) {
       console.error('Cleanup stale orders select error:', selectError);
       return NextResponse.json(
-        { error: selectError.message, deleted: 0, trackingUpdated: 0, statusEmailsSent: 0 },
+        { error: selectError.message, deleted: 0, trackingUpdated: 0, statusEmailsSent: 0, abandonedCartSent: 0 },
         { status: 500 }
       );
     }
@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
       if (deleteError) {
         console.error('Cleanup stale orders delete error:', deleteError);
         return NextResponse.json(
-          { error: deleteError.message, deleted: 0, trackingUpdated: 0, statusEmailsSent: 0 },
+          { error: deleteError.message, deleted: 0, trackingUpdated: 0, statusEmailsSent: 0, abandonedCartSent: 0 },
           { status: 500 }
         );
       }
@@ -113,7 +113,29 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ deleted, trackingUpdated, statusEmailsSent });
+    // Trigger abandoned-cart job on main site (no new cron path; reuse this run)
+    let abandonedCartSent = 0;
+    const mainSiteUrl = (process.env.NEXT_PUBLIC_SITE_URL || '').replace(/\/$/, '');
+    const cronSecret = process.env.CRON_SECRET;
+    if (mainSiteUrl && cronSecret) {
+      try {
+        const res = await fetch(`${mainSiteUrl}/api/cron/abandoned-cart`, {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${cronSecret}` },
+        });
+        if (res.ok) {
+          const data = (await res.json()) as { sent?: number };
+          abandonedCartSent = data.sent ?? 0;
+        } else {
+          const text = await res.text();
+          console.error('Abandoned cart cron request failed:', res.status, text);
+        }
+      } catch (err) {
+        console.error('Abandoned cart cron request error:', err);
+      }
+    }
+
+    return NextResponse.json({ deleted, trackingUpdated, statusEmailsSent, abandonedCartSent });
   } catch (err) {
     console.error('Cleanup stale orders error:', err);
     return NextResponse.json(
@@ -122,6 +144,7 @@ export async function GET(request: NextRequest) {
         deleted: 0,
         trackingUpdated: 0,
         statusEmailsSent: 0,
+        abandonedCartSent: 0,
       },
       { status: 500 }
     );
